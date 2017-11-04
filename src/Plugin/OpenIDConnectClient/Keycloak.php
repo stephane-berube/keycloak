@@ -154,7 +154,7 @@ class Keycloak extends OpenIDConnectClientBase {
           ],
         ],
       ];
-      $languages = $language_manager->getLanguages(LanguageInterface::STATE_ALL);
+      $languages = $language_manager->getLanguages();
       $mappings = $this->getLanguageMapping();
       foreach ($languages as $langcode => $language) {
         $form['keycloak_i18n_mapping'][$langcode] = [
@@ -257,11 +257,11 @@ class Keycloak extends OpenIDConnectClientBase {
     $languages = [];
     if (!empty($this->configuration['keycloak_i18n_mapping'])) {
       foreach ($this->configuration['keycloak_i18n_mapping'] as $mapping) {
-        if ($reverse) {
-          $languages[$mapping['target']] = $mapping['langcode'];
-        }
-        else {
+        if (!$reverse) {
           $languages[$mapping['langcode']] = $mapping['target'];
+        }
+        elseif (!empty($mapping['target'])) {
+          $languages[$mapping['target']] = $mapping['langcode'];
         }
       }
     }
