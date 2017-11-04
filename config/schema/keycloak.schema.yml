@@ -1,0 +1,38 @@
+# Schema for the configuration files of the OpenID Connect module.
+keycloak.settings.keycloak:
+  type: config_object
+  label: 'OpenID Connect Keycloak settings'
+  mapping:
+    enabled:
+      type: boolean
+      label: 'Enable client'
+    settings:
+      type: mapping
+      mapping:
+        client_id:
+          type: string
+          label: 'Client ID'
+        client_secret:
+          type: string
+          label: 'Client secret'
+        keycloak_base:
+          type: string
+          label: 'Keycloak base URL'
+        keycloak_realm:
+          type: string
+          label: 'Keycloak realm'
+        authorization_endpoint_kc:
+          type: string
+          label: 'Authorization endpoint'
+        token_endpoint_kc:
+          type: string
+          label: 'Token endpoint'
+        userinfo_endpoint_kc:
+          type: string
+          label: 'Userinfo endpoint'
+        sign_out_endpoint_kc:
+          type: 'string'
+          label: 'End session endpoint'
+        check_session_iframe_kc:
+          type: 'string'
+          label: 'Check session IFRAME target'
