@@ -141,6 +141,36 @@ class Keycloak extends OpenIDConnectClientBase {
         '#default_value' => !empty($this->configuration['userinfo_update_email']) ? $this->configuration['userinfo_update_email'] : '',
         '#description' => $this->t('Adds language parameters to Keycloak authentication requests and maps OpenID connect language tags to Drupal languages.'),
       ];
+      $form['keycloak_i18n_mapping'] = [
+        '#title' => $this->t('Language mappings'),
+        '#description' => $this->t('If your Keycloak is using different locale codes than Drupal (e.g. "zh-CN" in Keycloak vs. "zh-hans" in Drupal), define the Keycloak language codes here that match your Drupal setup.'),
+        '#type' => 'details',
+        '#collapsible' => TRUE,
+        '#collapsed' => FALSE,
+        '#tree' => TRUE,
+        '#states' => [
+          'visible' => [
+            ':input[name="clients[keycloak][settings][keycloak_i18n]"]' => ['checked' => TRUE],
+          ],
+        ],
+      ];
+      $languages = $language_manager->getLanguages(LanguageInterface::STATE_ALL);
+      $mappings = $this->getLanguageMapping();
+      foreach ($languages as $langcode => $language) {
+        $form['keycloak_i18n_mapping'][$langcode] = [
+          '#type' => 'container',
+          'langcode' => [
+            '#type' => 'hidden',
+            '#value' => $langcode,
+          ],
+          'target' => [
+            '#title' => sprintf('%s (%s)', $language->getName(), $langcode),
+            '#type' => 'textfield',
+            '#size' => 30,
+            '#default_value' => isset($mappings[$langcode]) ? $mappings[$langcode] : $langcode,
+          ],
+        ];
+      }
     }
     else {
       $form['keycloak_i18n'] = [
