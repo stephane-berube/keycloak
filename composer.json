@@ -10,7 +10,9 @@
     "issues": "https://www.drupal.org/project/issues/keycloak",
     "source": "http://cgit.drupalcode.org/keycloak"
   },
-  "require": {},
+  "require": {
+    "drupal/openid_connect": "^1.0"
+  },
   "authors": [
     {
       "name": "Mario Steinitz",
