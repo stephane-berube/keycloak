@@ -36,3 +36,18 @@ keycloak.settings.keycloak:
         check_session_iframe_kc:
           type: 'string'
           label: 'Check session IFRAME target'
+        keycloak_i18n:
+          type: boolean
+          label: 'Enable multilanguage support'
+        keycloak_i18n_mapping:
+          type: sequence
+          label: 'Language mapping'
+          sequence:
+            type: mapping
+            mapping:
+              langcode:
+                type: string
+                label: 'Drupal language code'
+              target:
+                type: string
+                label: 'Keycloak language code'

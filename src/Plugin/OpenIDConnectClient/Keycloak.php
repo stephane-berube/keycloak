@@ -31,7 +31,8 @@ class Keycloak extends OpenIDConnectClientBase {
    *   A trusted redirect response object.
    */
   public function authorize($scope = 'openid email') {
-    $language_none = \Drupal::languageManager()
+    $language_manager = \Drupal::languageManager();
+    $language_none = $language_manager
       ->getLanguage(LanguageInterface::LANGCODE_NOT_APPLICABLE);
     $redirect_uri = Url::fromRoute(
       'openid_connect.redirect_controller_redirect',
@@ -51,9 +52,26 @@ class Keycloak extends OpenIDConnectClientBase {
         'scope' => $scope,
         'redirect_uri' => $redirect_uri->getGeneratedUrl(),
         'state' => StateToken::create(),
-        'kc_locale' => 'en',
       ],
     ];
+
+    // Whether to add language parameter.
+    if (
+      $language_manager->isMultilingual() &&
+      $this->configuration['keycloak_i18n']
+    ) {
+      // Get current language.
+      $langcode = $language_manager->getCurrentLanguage()->getId();
+      // Map Drupal language code to Keycloak language identifier.
+      // This is required for some languages, as Drupal uses IETF
+      // script codes, while Keycloak may use IETF region codes.
+      if (!empty($this->configuration['keycloak_i18n'][$langcode])) {
+        $langcode = $this->configuration['keycloak_i18n'][$langcode];
+      }
+      // Add parameter to request query, so the Keycloak login/register
+      // pages will load using the right locale.
+      $url_options['query']['kc_locale'] = $langcode;
+    }
 
     $endpoints = $this->getEndpoints();
     // Clear _GET['destination'] because we need to override it.
@@ -113,6 +131,22 @@ class Keycloak extends OpenIDConnectClientBase {
       '#default_value' => !empty($this->configuration['userinfo_update_email']) ? $this->configuration['userinfo_update_email'] : '',
       '#description' => $this->t('If email address has been changed for existing user, save the new value to the user profile.'),
     ];
+
+    $language_manager = \Drupal::languageManager();
+    if ($language_manager->isMultilingual()) {
+      $form['keycloak_i18n'] = [
+        '#title' => $this->t('Enable multilanguage support'),
+        '#type' => 'checkbox',
+        '#default_value' => !empty($this->configuration['userinfo_update_email']) ? $this->configuration['userinfo_update_email'] : '',
+        '#description' => $this->t('Adds language parameters to Keycloak authentication requests and maps OpenID connect language tags to Drupal languages.'),
+      ];
+    }
+    else {
+      $form['keycloak_i18n'] = [
+        '#type' => 'hidden',
+        '#value' => FALSE,
+      ];
+    }
 
     return $form;
   }
