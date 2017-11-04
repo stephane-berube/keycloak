@@ -65,8 +65,9 @@ class Keycloak extends OpenIDConnectClientBase {
       // Map Drupal language code to Keycloak language identifier.
       // This is required for some languages, as Drupal uses IETF
       // script codes, while Keycloak may use IETF region codes.
-      if (!empty($this->configuration['keycloak_i18n'][$langcode])) {
-        $langcode = $this->configuration['keycloak_i18n'][$langcode];
+      $languages = $this->getLanguageMapping();
+      if (!empty($languages[$langcode])) {
+        $langcode = $languages[$langcode];
       }
       // Add parameter to request query, so the Keycloak login/register
       // pages will load using the right locale.
@@ -192,7 +193,49 @@ class Keycloak extends OpenIDConnectClientBase {
       }
     }
 
+    // Whether to translate locale attribute.
+    $language_manager = \Drupal::languageManager();
+    if (
+      !empty($userinfo['locale']) &&
+      $language_manager->isMultilingual() &&
+      $this->configuration['keycloak_i18n']
+    ) {
+      // Map Keycloak locale identifier to Drupal language code.
+      // This is required for some languages, as Drupal uses IETF
+      // script codes, while Keycloak may use IETF region codes.
+      $languages = $this->getLanguageMapping(TRUE);
+      if (!empty($languages[$userinfo['locale']])) {
+        $userinfo['locale'] = $languages[$userinfo['locale']];
+      }
+    }
+
     return $userinfo;
+  }
+
+  /**
+   * Helper method to retrieve configured language code mappings.
+   *
+   * @param bool $reverse
+   *   Whether Drupal language codes shall be keys and Keycloak codes values
+   *   (FALSE) or Keycloak codes shall be keys and Drupal codes values (TRUE).
+   *   Defaults to FALSE.
+   *
+   * @return array
+   *   Associative array of language code mappings.
+   */
+  public function getLanguageMapping($reverse = FALSE) {
+    $languages = [];
+    if (!empty($this->configuration['keycloak_i18n_mapping'])) {
+      foreach ($this->configuration['keycloak_i18n_mapping'] as $mapping) {
+        if ($reverse) {
+          $languages[$mapping['target']] = $mapping['langcode'];
+        }
+        else {
+          $languages[$mapping['langcode']] = $mapping['target'];
+        }
+      }
+    }
+    return $languages;
   }
 
 }
