@@ -73,33 +73,42 @@ CONFIGURATION <a name="configuration"></a>[top](#top)
 The module configuration is available within the OpenID Connect client
 settings. After enabling the client, you may provide the following Keycloak
 specific settings:  
+
   * Client ID  
     The ID of your Keycloak client.  
+
   * Client secret  
     The client secret of your Keycloak client.  
+
   * Keycloak base URL  
     The base URL of your Keycloak authentication server. This is the URL
     that shows the Keycloak welcome page and typically looks like  
     `https://example.com{:PORT}/auth`  
-    where example.com is the domain of your Keycloak server and the optional
-    {:PORT} the port, if the server does not use standard ports.  
+    where example.com is the domain of your Keycloak server and the
+    optional {:PORT} the port, if the server does not use standard ports.  
+
   * Keycloak realm  
     The name of the realm your users belong to.
+
   * Endpoints  
     Tip: You can find your endpoint configuration at  
     `https://example.com{:PORT}/auth/realms/{realm}/.well-known/openid-configuration`  
+
       * Authorization endpoint  
         The Keycloak OpenID authorization endpoint of your realm. This
         typically looks like  
         `https://example.com{:PORT}/auth/realms/{realm}/protocol/openid-connect/auth`  
+
       * Token endpoint  
         The Keycloak OpenID token endpoint of your realm. This
         typically looks like  
         `https://example.com{:PORT}/auth/realms/{realm}/protocol/openid-connect/token`  
+
       * UserInfo endpoint  
         The Keycloak OpenID user info endpoint of your realm. This
         typically looks like  
         `https://example.com{:PORT}/auth/realms/{realm}/protocol/openid-connect/userinfo`  
+
   * Update email address in user profile  
     The OpenID Connect module has no means to synchronize changed email
     addresses from the OpenID Connect provider. If you wish to update the email
@@ -110,11 +119,13 @@ specific settings:
     your Drupal already, the module will show an error message and not change
     the existing email address in Drupal. This may lead to inconsistencies with
     your Keycloak user database.
+
   * Enable multilanguage support  
     This option is available only, if you work with a multi-language Drupal
     site. It enables language parameter forwarding to Keycloak and translates
     Keycloak locales to Drupal language codes (refer to the following Language
     mappings setting).  
+
       * Language mappings  
         Drupal uses IETF script language codes for its language interface,
         while Keycloak may use IETF region language codes.
@@ -132,16 +143,19 @@ SIMILAR PROJECTS <a name="similar"></a>[top](#top)
 Keycloak supports OpenID Connect, OAuth2 and SAML standards for authentication
 clients. You might wish to also have a look to the following contributed
 modules to authenticate your Drupal users with Keycloak:  
+
   * [SAML Authentication](https://www.drupal.org/project/samlauth)  
     This module features SAML-based user authentication. User attributes
     mapping is in development.  
+
   * [simpleSAMLphp Authentication]
     (https://www.drupal.org/project/simplesamlphp_auth)  
     This module requires a working setup of
     [SimpleSAMLphp](https://simplesamlphp.org) as service provider on your
     webserver to connect to the Keycloak Identity Provider. It features
     SAML-based authentication and user role provisioning.  
-  * [OAuth2 Client](https://www.drupal.org/project/oauth2_client)
+
+  * [OAuth2 Client](https://www.drupal.org/project/oauth2_client)  
     A basic OAuth2.0 client for Drupal that can be extended programmatically.  
 
 
