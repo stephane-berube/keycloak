@@ -106,6 +106,12 @@ class Keycloak extends OpenIDConnectClientBase {
       '#type' => 'textfield',
       '#default_value' => $this->configuration['keycloak_realm'],
     ];
+
+    // Keycloak realm endpoints.
+    // Nice to have feature: Fetch these endpoints using an Ajax button from
+    // the Keycloak OpenID configuration information endpoint at
+    // https://example.com/auth/realms/realm/.well-known/openid-configuration
+    // after the user entered the base URL and realm name.
     $form['authorization_endpoint_kc'] = [
       '#title' => $this->t('Authorization endpoint'),
       '#type' => 'textfield',
@@ -126,6 +132,10 @@ class Keycloak extends OpenIDConnectClientBase {
       '#type' => 'textfield',
       '#default_value' => $this->configuration['userinfo_endpoint_kc'],
     ];
+
+    // Synchronize email addresses with Keycloak. This is safe as long as
+    // Keycloak is the only identity broker, because - as Drupal - it allows
+    // unique email addresses only within a single realm.
     $form['userinfo_update_email'] = [
       '#title' => $this->t('Update email address in user profile'),
       '#type' => 'checkbox',
@@ -133,6 +143,7 @@ class Keycloak extends OpenIDConnectClientBase {
       '#description' => $this->t('If email address has been changed for existing user, save the new value to the user profile.'),
     ];
 
+    // Enable/disable i18n support and map language codes to Keycloak locales.
     $language_manager = \Drupal::languageManager();
     if ($language_manager->isMultilingual()) {
       $form['keycloak_i18n'] = [
@@ -205,7 +216,9 @@ class Keycloak extends OpenIDConnectClientBase {
   public function retrieveUserInfo($access_token) {
     $userinfo = parent::retrieveUserInfo($access_token);
 
-    // Update email address?
+    // Synchronize email addresses with Keycloak. This is safe as long as
+    // Keycloak is the only identity broker, because - as Drupal - it allows
+    // unique email addresses only within a single realm.
     if (
       $this->configuration['userinfo_update_email'] == 1 &&
       is_array($userinfo) &&
@@ -218,12 +231,48 @@ class Keycloak extends OpenIDConnectClientBase {
         $account !== FALSE &&
         ($account->getEmail() != $userinfo['email'])
       ) {
-        $account->setEmail($userinfo['email']);
-        $account->save();
+        $set_email = TRUE;
+
+        // Check whether the e-mail address is valid.
+        if (!\Drupal::service('email.validator')->isValid($userinfo['email'])) {
+          drupal_set_message(
+            t(
+              'The e-mail address is not valid: @email',
+              [
+                '@email' => $userinfo['email'],
+              ]
+            ),
+            'error'
+          );
+          $set_email = FALSE;
+        }
+
+        // Check whether there is an e-mail address conflict.
+        if (
+         $user = user_load_by_mail($userinfo['email']) &&
+         $account->id() != $user->id()
+        ) {
+          drupal_set_message(
+            t(
+              'The e-mail address is already taken: @email',
+              [
+                '@email' => $userinfo['email'],
+              ]
+            ),
+            'error'
+          );
+          return FALSE;
+        }
+
+        // Only change the email, if no validation error occured.
+        if ($set_email) {
+          $account->setEmail($userinfo['email']);
+          $account->save();
+        }
       }
     }
 
-    // Whether to translate locale attribute.
+    // Whether to 'translate' locale attribute.
     $language_manager = \Drupal::languageManager();
     if (
       !empty($userinfo['locale']) &&
@@ -232,7 +281,8 @@ class Keycloak extends OpenIDConnectClientBase {
     ) {
       // Map Keycloak locale identifier to Drupal language code.
       // This is required for some languages, as Drupal uses IETF
-      // script codes, while Keycloak may use IETF region codes.
+      // script codes, while Keycloak may use IETF region codes for
+      // localization.
       $languages = $this->getLanguageMapping(TRUE);
       if (!empty($languages[$userinfo['locale']])) {
         $userinfo['locale'] = $languages[$userinfo['locale']];
