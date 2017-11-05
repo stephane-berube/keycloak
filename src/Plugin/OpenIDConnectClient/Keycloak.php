@@ -264,7 +264,7 @@ class Keycloak extends OpenIDConnectClientBase {
           return FALSE;
         }
 
-        // Only change the email, if no validation error occured.
+        // Only change the email, if no validation error occurred.
         if ($set_email) {
           $account->setEmail($userinfo['email']);
           $account->save();

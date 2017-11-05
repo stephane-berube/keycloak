@@ -1,6 +1,6 @@
 {
   "name": "drupal/keycloak",
-  "description": "Enables OpenID Connect Keycloak sign on and user data syncronization.",
+  "description": "Enables OpenID Connect Keycloak sign on and user data synchronization.",
   "type": "drupal-module",
   "keywords": ["Drupal"],
   "license": "GPL-2.0+",

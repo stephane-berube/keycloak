@@ -135,7 +135,8 @@ modules to authenticate your Drupal users with Keycloak:
   * [SAML Authentication](https://www.drupal.org/project/samlauth)  
     This module features SAML-based user authentication. User attributes
     mapping is in development.  
-  * [simpleSAMLphp Authentication](https://www.drupal.org/project/simplesamlphp_auth)  
+  * [simpleSAMLphp Authentication]
+    (https://www.drupal.org/project/simplesamlphp_auth)  
     This module requires a working setup of
     [SimpleSAMLphp](https://simplesamlphp.org) as service provider on your
     webserver to connect to the Keycloak Identity Provider. It features
