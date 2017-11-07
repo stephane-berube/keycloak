@@ -36,7 +36,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
   protected $keycloak;
 
   /**
-   * Constructs an instance of the Keycloak client plugin
+   * Constructs an instance of the Keycloak client plugin.
    *
    * @param array $configuration
    *   The plugin configuration.

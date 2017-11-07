@@ -63,34 +63,6 @@ class KeycloakService {
   }
 
   /**
-   * Store the Keycloak session information to the user session.
-   *
-   * @param array $info
-   *   Associative array with session information. The storable information
-   *   is limited to the allowed keys from getSessionInfoDefaultKeys().
-   *
-   * @return bool
-   *   TRUE, if the information was set, FALSE otherwise.
-   */
-  public function setSessionInfo(array $info) {
-    // Whether the user is not authenticated or the Keycloak client disabled.
-    if (!\Drupal::currentUser()->isAuthenticated() || !$this->isEnabled()) {
-      return FALSE;
-    }
-
-    $default_keys = $this->getSessionInfoDefaultKeys();
-    $old_values = $this->getSessionInfo();
-    $new_values = array_merge($old_values, $info);
-
-    $tempstore = $this->privateTempstore->get('keycloak');
-    foreach ($default_keys as $key) {
-      $tempstore->set($key, $new_values[$key]);
-    }
-
-    return TRUE;
-  }
-
-  /**
    * Whether the Keycloak clients' i18n mapping is enabled.
    *
    * @return bool
