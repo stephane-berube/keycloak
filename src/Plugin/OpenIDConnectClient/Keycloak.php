@@ -2,12 +2,19 @@
 
 namespace Drupal\keycloak\Plugin\OpenIDConnectClient;
 
+use GuzzleHttp\ClientInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Language\LanguageInterface;
+use Drupal\Core\Logger\LoggerChannelFactoryInterface;
+use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
 use Drupal\Core\Routing\TrustedRedirectResponse;
 use Drupal\Core\Url;
 use Drupal\openid_connect\Plugin\OpenIDConnectClientBase;
+use Drupal\openid_connect\Plugin\OpenIDConnectClientInterface;
 use Drupal\openid_connect\StateToken;
+use Drupal\keycloak\KeycloakService;
+use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * OpenID Connect client for Keycloak.
@@ -19,7 +26,73 @@ use Drupal\openid_connect\StateToken;
  *   label = @Translation("Keycloak")
  * )
  */
-class Keycloak extends OpenIDConnectClientBase {
+class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInterface, ContainerFactoryPluginInterface {
+
+  /**
+   * Keycloak service instance.
+   *
+   * @var \Drupal\keycloak\KeycloakService
+   */
+  protected $keycloak;
+
+  /**
+   * Constructs an instance of the Keycloak client plugin
+   *
+   * @param array $configuration
+   *   The plugin configuration.
+   * @param string $plugin_id
+   *   The plugin identifier.
+   * @param mixed $plugin_definition
+   *   The plugin definition.
+   * @param \Symfony\Component\HttpFoundation\RequestStack $request_stack
+   *   The request stack.
+   * @param \GuzzleHttp\ClientInterface $http_client
+   *   The http client.
+   * @param \Drupal\keycloak\KeycloakService $keycloak
+   *   The Keycloak service.
+   * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_factory
+   *   The logger factory.
+   */
+  public function __construct(
+    array $configuration,
+    $plugin_id,
+    $plugin_definition,
+    RequestStack $request_stack,
+    ClientInterface $http_client,
+    KeycloakService $keycloak,
+    LoggerChannelFactoryInterface $logger_factory
+  ) {
+    parent::__construct(
+      $configuration,
+      $plugin_id,
+      $plugin_definition,
+      $request_stack,
+      $http_client,
+      $logger_factory
+    );
+
+    $this->keycloak = $keycloak;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function create(
+    ContainerInterface $container,
+    array $configuration,
+    $plugin_id,
+    $plugin_definition
+  ) {
+    return new static(
+      $configuration,
+      $plugin_id,
+      $plugin_definition,
+      $container->get('request_stack'),
+      $container->get('http_client'),
+      $container->get('logger.factory'),
+      $container->get('keycloak.keycloak')
+    );
+  }
 
   /**
    * Implements OpenIDConnectClientInterface::authorize().
@@ -56,18 +129,15 @@ class Keycloak extends OpenIDConnectClientBase {
     ];
 
     // Whether to add language parameter.
-    if (
-      $language_manager->isMultilingual() &&
-      $this->configuration['keycloak_i18n']
-    ) {
+    if ($this->keycloak->isI18nEnabled()) {
       // Get current language.
       $langcode = $language_manager->getCurrentLanguage()->getId();
       // Map Drupal language code to Keycloak language identifier.
       // This is required for some languages, as Drupal uses IETF
       // script codes, while Keycloak may use IETF region codes.
-      $languages = $this->getLanguageMapping();
+      $languages = $this->keycloak->getI18nMapping();
       if (!empty($languages[$langcode])) {
-        $langcode = $languages[$langcode];
+        $langcode = $languages[$langcode]['locale'];
       }
       // Add parameter to request query, so the Keycloak login/register
       // pages will load using the right locale.
@@ -165,8 +235,7 @@ class Keycloak extends OpenIDConnectClientBase {
           ],
         ],
       ];
-      $languages = $language_manager->getLanguages();
-      $mappings = $this->getLanguageMapping();
+      $languages = $this->keycloak->getI18nMapping();
       foreach ($languages as $langcode => $language) {
         $form['keycloak_i18n_mapping'][$langcode] = [
           '#type' => 'container',
@@ -175,10 +244,10 @@ class Keycloak extends OpenIDConnectClientBase {
             '#value' => $langcode,
           ],
           'target' => [
-            '#title' => sprintf('%s (%s)', $language->getName(), $langcode),
+            '#title' => sprintf('%s (%s)', $language['label'], $langcode),
             '#type' => 'textfield',
             '#size' => 30,
-            '#default_value' => isset($mappings[$langcode]) ? $mappings[$langcode] : $langcode,
+            '#default_value' => $language['locale'],
           ],
         ];
       }
@@ -273,49 +342,21 @@ class Keycloak extends OpenIDConnectClientBase {
     }
 
     // Whether to 'translate' locale attribute.
-    $language_manager = \Drupal::languageManager();
     if (
       !empty($userinfo['locale']) &&
-      $language_manager->isMultilingual() &&
-      $this->configuration['keycloak_i18n']
+      $this->keycloak->isI18nEnabled()
     ) {
       // Map Keycloak locale identifier to Drupal language code.
       // This is required for some languages, as Drupal uses IETF
       // script codes, while Keycloak may use IETF region codes for
       // localization.
-      $languages = $this->getLanguageMapping(TRUE);
+      $languages = $this->keycloak->getI18nMapping(TRUE);
       if (!empty($languages[$userinfo['locale']])) {
-        $userinfo['locale'] = $languages[$userinfo['locale']];
+        $userinfo['locale'] = $languages[$userinfo['locale']]['language_id'];
       }
     }
 
     return $userinfo;
-  }
-
-  /**
-   * Helper method to retrieve configured language code mappings.
-   *
-   * @param bool $reverse
-   *   Whether Drupal language codes shall be keys and Keycloak codes values
-   *   (FALSE) or Keycloak codes shall be keys and Drupal codes values (TRUE).
-   *   Defaults to FALSE.
-   *
-   * @return array
-   *   Associative array of language code mappings.
-   */
-  public function getLanguageMapping($reverse = FALSE) {
-    $languages = [];
-    if (!empty($this->configuration['keycloak_i18n_mapping'])) {
-      foreach ($this->configuration['keycloak_i18n_mapping'] as $mapping) {
-        if (!$reverse) {
-          $languages[$mapping['langcode']] = $mapping['target'];
-        }
-        elseif (!empty($mapping['target'])) {
-          $languages[$mapping['target']] = $mapping['langcode'];
-        }
-      }
-    }
-    return $languages;
   }
 
 }

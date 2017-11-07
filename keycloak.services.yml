@@ -1,0 +1,4 @@
+services:
+  keycloak.keycloak:
+    class: Drupal\keycloak\KeycloakService
+    arguments: ['@config.factory', '@language_manager', '@logger.factory']

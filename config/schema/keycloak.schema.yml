@@ -30,12 +30,6 @@ keycloak.settings.keycloak:
         userinfo_endpoint_kc:
           type: string
           label: 'Userinfo endpoint'
-        sign_out_endpoint_kc:
-          type: 'string'
-          label: 'End session endpoint'
-        check_session_iframe_kc:
-          type: 'string'
-          label: 'Check session IFRAME target'
         keycloak_i18n:
           type: boolean
           label: 'Enable multilanguage support'
