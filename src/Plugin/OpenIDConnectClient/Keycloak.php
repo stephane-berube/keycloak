@@ -89,8 +89,8 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
       $plugin_definition,
       $container->get('request_stack'),
       $container->get('http_client'),
-      $container->get('logger.factory'),
-      $container->get('keycloak.keycloak')
+      $container->get('keycloak.keycloak'),
+      $container->get('logger.factory')
     );
   }
 
