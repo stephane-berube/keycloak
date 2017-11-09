@@ -4,14 +4,14 @@ settings:
   client_secret:
   keycloak_base: 'https://example.com/auth'
   keycloak_realm: 'example_realm'
-  authorization_endpoint_kc: 'https://example.com/auth/realms/example-realm/protocol/openid-connect/auth'
-  token_endpoint_kc: 'https://example.com/auth/realms/example-realm/protocol/openid-connect/token'
-  userinfo_endpoint_kc: 'https://example.com/auth/realms/example-realm/protocol/openid-connect/userinfo'
-  keycloak_i18n: FALSE
-  keycloak_i18n_mapping:
-    -
-      langcode: zh-hans
-      target: zh-CN
-    -
-      langcode: zh-hant
-      target: zh-HK
+  userinfo_update_email: false
+  keycloak_i18n:
+    enabled: false
+    mapping:
+      -
+        langcode: 'zh-hans'
+        target: 'zh-CN'
+      -
+        langcode: 'zh-hant'
+        target: 'zh-HK'
+  debug: false

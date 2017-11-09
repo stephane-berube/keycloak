@@ -1,6 +1,6 @@
 <?php
 
-namespace Drupal\keycloak;
+namespace Drupal\keycloak\Service;
 
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Language\LanguageManagerInterface;
@@ -9,7 +9,7 @@ use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 /**
  * Keycloak service.
  */
-class KeycloakService {
+class KeycloakService implements KeycloakServiceInterface {
 
   /**
    * A configuration object containing Keycloak client settings.
@@ -26,21 +26,14 @@ class KeycloakService {
   protected $languageManager;
 
   /**
-   * A logger instance.
+   * The logger factory.
    *
-   * @var \Psr\Log\LoggerInterface
+   * @var Drupal\Core\Logger\LoggerChannelFactoryInterface
    */
-  protected $logger;
+  protected $loggerFactory;
 
   /**
-   * Constructor for Drupal\keycloak\KeycloakService.
-   *
-   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
-   *   The config factory.
-   * @param \Drupal\Core\Language\LanguageManagerInterface $language_manager
-   *   A language manager instance.
-   * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger
-   *   A logger channel factory instance.
+   * {@inheritdoc}
    */
   public function __construct(
     ConfigFactoryInterface $config_factory,
@@ -49,55 +42,54 @@ class KeycloakService {
   ) {
     $this->config = $config_factory->get('openid_connect.settings.keycloak');
     $this->languageManager = $language_manager;
-    $this->logger = $logger;
+    $this->loggerFactory = $logger;
   }
 
   /**
-   * Whether the Keycloak client is enabled.
-   *
-   * @return bool
-   *   TRUE, if the Keycloak client is enabled, FALSE otherwise.
+   * {@inheritdoc}
    */
   public function isEnabled() {
     return $this->config->get('enabled');
   }
 
   /**
-   * Whether the Keycloak clients' i18n mapping is enabled.
-   *
-   * @return bool
-   *   TRUE, if i18n mapping is enabled, FALSE otherwise.
+   * {@inheritdoc}
    */
-  public function isI18nEnabled() {
-    return $this->languageManager->isMultilingual() &&
-      $this->config->get('settings.keycloak_i18n');
+  public function getBaseUrl() {
+    return $this->config->get('settings.keycloak_base');
   }
 
   /**
-   * Return the Keycloak i18n locale code mapping.
-   *
-   * This mapping is required for some languages, as Drupal uses IETF
-   * script codes, while Keycloak may use IETF region codes for its
-   * localization.
-   *
-   * @param bool $reverse
-   *   (optional) Whether to use Drupal language IDs as keys (FALSE), or
-   *   Keycloak locales (TRUE).
-   *   Defaults to FALSE.
-   * @param bool $include_enabled
-   *   (optional) Whether to include non-mapped, but in Drupal enabled
-   *   languages. If no mapping is set for an enabled language, the Drupal
-   *   language ID will be used as Keycloak locale. (Which most often
-   *   matches the Keycloak locales by default.)
-   *   Defaults to TRUE.
-   *
-   * @return array
-   *   Associative array with i18n locale mappings with keys as specified
-   *   with the $reverse parameter and an associative locale map array as
-   *   value, having the following keys:
-   *   - language_id:           Drupal language ID.
-   *   - locale:                Keycloak locale.
-   *   - label:                 Localized human-readable language label.
+   * {@inheritdoc}
+   */
+  public function getRealm() {
+    return $this->config->get('settings.keycloak_realm');
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getEndpoints() {
+    $base = $this->getBaseUrl() . '/realms/' . $this->getRealm();
+    return [
+      'authorization' => $base . self::KEYCLOAK_AUTH_ENDPOINT_URI,
+      'token' => $base . self::KEYCLOAK_TOKEN_ENDPOINT_URI,
+      'userinfo' => $base . self::KEYCLOAK_USERINFO_ENDPOINT_URI,
+      'end_session' => $base . self::KEYCLOAK_END_SESSION_ENDPOINT_URI,
+      'session_iframe' => $base . self::KEYCLOAK_CHECK_SESSION_IFRAME_URI,
+    ];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function isI18nEnabled() {
+    return $this->languageManager->isMultilingual() &&
+      $this->config->get('settings.keycloak_i18n.enabled');
+  }
+
+  /**
+   * {@inheritdoc}
    */
   public function getI18nMapping($reverse = FALSE, $include_enabled = TRUE) {
     $mappings = [];
@@ -134,6 +126,20 @@ class KeycloakService {
     }
 
     return $mappings;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getLogger() {
+    return $this->loggerFactory->get('openid_connect_keycloak');
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function isDebugMode() {
+    return $this->config->get('settings.debug');
   }
 
 }

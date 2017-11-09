@@ -12,7 +12,7 @@ use Drupal\Core\Url;
 use Drupal\openid_connect\Plugin\OpenIDConnectClientBase;
 use Drupal\openid_connect\Plugin\OpenIDConnectClientInterface;
 use Drupal\openid_connect\StateToken;
-use Drupal\keycloak\KeycloakService;
+use Drupal\keycloak\Service\KeycloakServiceInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 
@@ -29,9 +29,9 @@ use Symfony\Component\HttpFoundation\RequestStack;
 class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInterface, ContainerFactoryPluginInterface {
 
   /**
-   * Keycloak service instance.
+   * The Keycloak service.
    *
-   * @var \Drupal\keycloak\KeycloakService
+   * @var \Drupal\keycloak\Service\KeycloakServiceInterface
    */
   protected $keycloak;
 
@@ -48,7 +48,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
    *   The request stack.
    * @param \GuzzleHttp\ClientInterface $http_client
    *   The http client.
-   * @param \Drupal\keycloak\KeycloakService $keycloak
+   * @param \Drupal\keycloak\Service\KeycloakServiceInterface $keycloak
    *   The Keycloak service.
    * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_factory
    *   The logger factory.
@@ -59,7 +59,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
     $plugin_definition,
     RequestStack $request_stack,
     ClientInterface $http_client,
-    KeycloakService $keycloak,
+    KeycloakServiceInterface $keycloak,
     LoggerChannelFactoryInterface $logger_factory
   ) {
     parent::__construct(
@@ -95,13 +95,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
   }
 
   /**
-   * Implements OpenIDConnectClientInterface::authorize().
-   *
-   * @param string $scope
-   *   A string of scopes.
-   *
-   * @return \Drupal\Core\Routing\TrustedRedirectResponse
-   *   A trusted redirect response object.
+   * {@inheritdoc}
    */
   public function authorize($scope = 'openid email') {
     $language_manager = \Drupal::languageManager();
@@ -159,7 +153,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
   }
 
   /**
-   * Overrides OpenIDConnectClientBase::settingsForm().
+   * {@inheritdoc}
    */
   public function buildConfigurationForm(array $form, FormStateInterface $form_state) {
     $form = parent::buildConfigurationForm($form, $form_state);
@@ -177,32 +171,6 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
       '#default_value' => $this->configuration['keycloak_realm'],
     ];
 
-    // Keycloak realm endpoints.
-    // Nice to have feature: Fetch these endpoints using an Ajax button from
-    // the Keycloak OpenID configuration information endpoint at
-    // https://example.com/auth/realms/realm/.well-known/openid-configuration
-    // after the user entered the base URL and realm name.
-    $form['authorization_endpoint_kc'] = [
-      '#title' => $this->t('Authorization endpoint'),
-      '#type' => 'textfield',
-      '#default_value' => $this->configuration['authorization_endpoint_kc'],
-    ];
-    $form['authorization_endpoint_kc'] = [
-      '#title' => $this->t('Authorization endpoint'),
-      '#type' => 'textfield',
-      '#default_value' => $this->configuration['authorization_endpoint_kc'],
-    ];
-    $form['token_endpoint_kc'] = [
-      '#title' => $this->t('Token endpoint'),
-      '#type' => 'textfield',
-      '#default_value' => $this->configuration['token_endpoint_kc'],
-    ];
-    $form['userinfo_endpoint_kc'] = [
-      '#title' => $this->t('UserInfo endpoint'),
-      '#type' => 'textfield',
-      '#default_value' => $this->configuration['userinfo_endpoint_kc'],
-    ];
-
     // Synchronize email addresses with Keycloak. This is safe as long as
     // Keycloak is the only identity broker, because - as Drupal - it allows
     // unique email addresses only within a single realm.
@@ -216,28 +184,31 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
     // Enable/disable i18n support and map language codes to Keycloak locales.
     $language_manager = \Drupal::languageManager();
     if ($language_manager->isMultilingual()) {
-      $form['keycloak_i18n'] = [
+      $form['keycloak_i18n_enabled'] = [
         '#title' => $this->t('Enable multilanguage support'),
         '#type' => 'checkbox',
-        '#default_value' => !empty($this->configuration['userinfo_update_email']) ? $this->configuration['userinfo_update_email'] : '',
+        '#default_value' => !empty($this->configuration['keycloak_i18n_enable']) ? $this->configuration['keycloak_i18n_enable'] : '',
         '#description' => $this->t('Adds language parameters to Keycloak authentication requests and maps OpenID connect language tags to Drupal languages.'),
       ];
-      $form['keycloak_i18n_mapping'] = [
-        '#title' => $this->t('Language mappings'),
-        '#description' => $this->t('If your Keycloak is using different locale codes than Drupal (e.g. "zh-CN" in Keycloak vs. "zh-hans" in Drupal), define the Keycloak language codes here that match your Drupal setup.'),
-        '#type' => 'details',
-        '#collapsible' => TRUE,
-        '#collapsed' => FALSE,
-        '#tree' => TRUE,
+      $form['keycloak_i18n'] = [
+        '#title' => $this->t('Multi-language settings'),
+        '#type' => 'fieldset',
+        '#collapsible' => FALSE,
         '#states' => [
           'visible' => [
-            ':input[name="clients[keycloak][settings][keycloak_i18n]"]' => ['checked' => TRUE],
+            ':input[name="clients[keycloak][settings][keycloak_i18n_enabled]"]' => ['checked' => TRUE],
           ],
         ],
       ];
+      $form['keycloak_i18n']['mapping'] = [
+        '#title' => $this->t('Language mappings'),
+        '#description' => $this->t('If your Keycloak is using different locale codes than Drupal (e.g. "zh-CN" in Keycloak vs. "zh-hans" in Drupal), define the Keycloak language codes here that match your Drupal setup.'),
+        '#type' => 'details',
+        '#collapsible' => FALSE,
+      ];
       $languages = $this->keycloak->getI18nMapping();
       foreach ($languages as $langcode => $language) {
-        $form['keycloak_i18n_mapping'][$langcode] = [
+        $form['keycloak_i18n']['mapping'][$langcode] = [
           '#type' => 'container',
           'langcode' => [
             '#type' => 'hidden',
@@ -253,7 +224,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
       }
     }
     else {
-      $form['keycloak_i18n'] = [
+      $form['keycloak_i18n_enabled'] = [
         '#type' => 'hidden',
         '#value' => FALSE,
       ];
@@ -263,24 +234,14 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
   }
 
   /**
-   * Overrides OpenIDConnectClientBase::getEndpoints().
+   * {@inheritdoc}
    */
   public function getEndpoints() {
-    return [
-      'authorization' => $this->configuration['authorization_endpoint_kc'],
-      'token' => $this->configuration['token_endpoint_kc'],
-      'userinfo' => $this->configuration['userinfo_endpoint_kc'],
-    ];
+    return $this->keycloak->getEndpoints();
   }
 
   /**
-   * Implements OpenIDConnectClientInterface::retrieveUserInfo().
-   *
-   * @param string $access_token
-   *   An access token string.
-   *
-   * @return array|bool
-   *   A result array or false.
+   * {@inheritdoc}
    */
   public function retrieveUserInfo($access_token) {
     $userinfo = parent::retrieveUserInfo($access_token);
