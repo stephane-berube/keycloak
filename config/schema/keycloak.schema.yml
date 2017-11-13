@@ -46,3 +46,6 @@ openid_connect.settings.keycloak:
                   target:
                     type: string
                     label: 'Keycloak language code'
+        keycloak_sso:
+          type: boolean
+          label: 'Enable Keycloak single sign-on'

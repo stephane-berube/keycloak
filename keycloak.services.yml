@@ -2,3 +2,9 @@ services:
   keycloak.keycloak:
     class: Drupal\keycloak\Service\KeycloakService
     arguments: ['@config.factory', '@language_manager', '@logger.factory']
+
+  keycloak.route_subscriber:
+    class: Drupal\keycloak\Routing\KeycloakRouteSubscriber
+    arguments: ['@keycloak.keycloak']
+    tags:
+      - { name: event_subscriber }

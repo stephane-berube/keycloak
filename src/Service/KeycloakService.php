@@ -84,7 +84,8 @@ class KeycloakService implements KeycloakServiceInterface {
    * {@inheritdoc}
    */
   public function isI18nEnabled() {
-    return $this->languageManager->isMultilingual() &&
+    return $this->isEnabled() &&
+      $this->languageManager->isMultilingual() &&
       $this->config->get('settings.keycloak_i18n.enabled');
   }
 
@@ -126,6 +127,14 @@ class KeycloakService implements KeycloakServiceInterface {
     }
 
     return $mappings;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function isSsoEnabled() {
+    return $this->isEnabled() &&
+      $this->config->get('settings.keycloak_sso');
   }
 
   /**

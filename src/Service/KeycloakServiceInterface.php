@@ -131,6 +131,14 @@ interface KeycloakServiceInterface {
   public function getI18nMapping($reverse = FALSE, $include_enabled = TRUE);
 
   /**
+   * Whether Keycloak single sign-on (SSO) is enabled.
+   *
+   * @return bool
+   *   TRUE, if single sign-on is enabled, FALSE otherwise.
+   */
+  public function isSsoEnabled();
+
+  /**
    * Return Keycloak logger.
    *
    * @return \Psr\Log\LoggerInterface

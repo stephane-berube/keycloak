@@ -230,6 +230,13 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
       ];
     }
 
+    $form['keycloak_sso'] = [
+      '#title' => $this->t('Enable Keycloak single sign-on (SSO)'),
+      '#type' => 'checkbox',
+      '#default_value' => !empty($this->configuration['keycloak_sso']) ? $this->configuration['keycloak_sso'] : '',
+      '#description' => $this->t("Changes Drupal's authentication back-end to use Keycloak by default. Drupal's user login and registration pages will redirect to Keycloak. Existing users will only be able to login using their Drupal credentials at <em>/keycloak/login</em>."),
+    ];
+
     return $form;
   }
 
