@@ -187,7 +187,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
       $form['keycloak_i18n_enabled'] = [
         '#title' => $this->t('Enable multi-language support'),
         '#type' => 'checkbox',
-        '#default_value' => !empty($this->configuration['keycloak_i18n']['enable']) ? $this->configuration['keycloak_i18n']['enable'] : '',
+        '#default_value' => !empty($this->configuration['keycloak_i18n']['enabled']) ? $this->configuration['keycloak_i18n']['enabled'] : '',
         '#description' => $this->t('Adds language parameters to Keycloak authentication requests and maps OpenID connect language tags to Drupal languages.'),
       ];
       $form['keycloak_i18n'] = [
