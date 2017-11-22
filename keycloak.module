@@ -6,7 +6,7 @@
  */
 
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\Core\Link;
+use Drupal\Core\Routing\RouteMatchInterface
 use Drupal\Core\Url;
 
 /**
@@ -26,7 +26,7 @@ function keycloak_modules_installed($modules) {
 /**
  * Implements hook_help().
  */
-function keycloak_help($route_name, \Drupal\Core\Routing\RouteMatchInterface $route_match) {
+function keycloak_help($route_name, RouteMatchInterface $route_match) {
   switch ($route_name) {
     // Main module help for the keycloak module.
     case 'help.page.keycloak':
