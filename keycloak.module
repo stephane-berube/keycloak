@@ -6,6 +6,51 @@
  */
 
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Link;
+use Drupal\Core\Url;
+
+/**
+ * Implements hook_modules_installed().
+ */
+function keycloak_modules_installed($modules) {
+  // Whether the keycloak module was installed.
+  if (in_array('keycloak', $modules)) {
+    // Show configuration page hint.
+    $settings = Url::fromRoute('openid_connect.admin_settings')->toString();
+    drupal_set_message(t('You can now enable Keycloak OpenID Connect sign in at the <a href=":settings">OpenID Connect settings</a> page.', [
+      ':settings' => $settings,
+    ]));
+  }
+}
+
+/**
+ * Implements hook_help().
+ */
+function keycloak_help($route_name, \Drupal\Core\Routing\RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    // Main module help for the keycloak module.
+    case 'help.page.keycloak':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The Keycloak module allows you to authenticate your users against a Keycloak authentication server. You can enable the Keycloak client within the <a href=":settings">OpenID Connect settings</a> page. For more information, see the <a href=":documentation">online documentation for the Keycloak module</a>.', [
+        ':settings' => Url::fromRoute('openid_connect.admin_settings')->toString(),
+        ':documentation' => 'https://www.drupal.org/docs/8/modules/keycloak-openid-connect',
+      ]) . '</p>';
+      $output .= '<h3>' . t('Uses') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt>' . t('Login to Drupal using Keycloak OpenID Connect') . '</dt>';
+      $output .= '<dd>' . t('Your Drupal users can use an external Keycloak authentication server to register and login to your Drupal site.') . '</dd>';
+      $output .= '<dt>' . t('Synchronize user fields with OpenID claims') . '</dt>';
+      $output .= '<dd>' . t("During login and user registration you can synchronize user attributes with OpenID claims using the OpenID Connect module's claim mapping.") . '</dd>';
+      $output .= '<dt>' . t('Synchronize email address changes from within Keycloak') . '</dt>';
+      $output .= '<dd>' . t("If the user's email address changed in Keycloak, you can synchronize this change with the Drupal user's email address.") . '</dd>';
+      $output .= '<dt>' . t('Multi-language support') . '</dt>';
+      $output .= '<dd>' . t("When using a multi-language Drupal site and a multi-language Keycloak authentication server, you can forward language parameters to the login and register pages and map Keycloak locales to the Drupal user's language settings.") . '</dd>';
+      $output .= '</dl>';
+      return $output;
+
+  }
+}
 
 /**
  * Implements hook_form_FORM_ID_alter() for openid_connect_admin_settings.
