@@ -49,6 +49,21 @@ class KeycloakRouteSubscriber extends RouteSubscriberBase {
           'no_cache' => TRUE,
         ]);
     }
+
+    // Always grant access to '/user/logout' and delegate its
+    // handling to our own controller.
+    if (($this->keycloak->isKeycloakSignOutEnabled() || $this->keycloak->isCheckSessionEnabled()) && $route = $collection->get('user.logout')) {
+      $route
+        ->setDefaults([
+          '_controller' => '\Drupal\keycloak\Controller\KeycloakController::logout',
+        ])
+        ->setRequirements([
+          '_access' => 'TRUE',
+        ])
+        ->setOptions([
+          'no_cache' => TRUE,
+        ]);
+    }
   }
 
   /**

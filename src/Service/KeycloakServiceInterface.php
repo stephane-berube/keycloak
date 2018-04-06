@@ -5,6 +5,9 @@ namespace Drupal\keycloak\Service;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Language\LanguageManagerInterface;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
+use Drupal\Core\Session\AccountProxyInterface;
+use Drupal\openid_connect\Plugin\OpenIDConnectClientManager;
+use Drupal\user\PrivateTempStoreFactory;
 
 /**
  * Keycloak service interface.
@@ -42,18 +45,52 @@ interface KeycloakServiceInterface {
   const KEYCLOAK_CHECK_SESSION_IFRAME_URI = '/protocol/openid-connect/login-status-iframe.html';
 
   /**
+   * Keycloak access token.
+   */
+  const KEYCLOAK_SESSION_ACCESS_TOKEN = 'access_token';
+
+  /**
+   * Keycloak refresh token.
+   */
+  const KEYCLOAK_SESSION_REFRESH_TOKEN = 'refresh_token';
+
+  /**
+   * Keycloak ID token.
+   */
+  const KEYCLOAK_SESSION_ID_TOKEN = 'id_token';
+
+  /**
+   * Keycloak client ID.
+   */
+  const KEYCLOAK_SESSION_CLIENT_ID = 'client_id';
+
+  /**
+   * Keycloak session ID.
+   */
+  const KEYCLOAK_SESSION_SESSION_ID = 'session_id';
+
+  /**
    * Constructor for Drupal\keycloak\Service\KeycloakService.
    *
    * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
    *   The config factory.
+   * @param \Drupal\openid_connect\Plugin\OpenIDConnectClientManager $oidc_client_manager
+   *   Client plugin manager of the OpenID Connect module.
    * @param \Drupal\Core\Language\LanguageManagerInterface $language_manager
    *   A language manager instance.
+   * @param \Drupal\Core\Session\AccountProxyInterface $current_user
+   *   Account proxy for the currently logged-in user.
+   * @param \Drupal\user\PrivateTempStoreFactory $private_tempstore
+   *   A private tempstore factory instance.
    * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger
    *   A logger channel factory instance.
    */
   public function __construct(
     ConfigFactoryInterface $config_factory,
+    OpenIDConnectClientManager $oidc_client_manager,
     LanguageManagerInterface $language_manager,
+    AccountProxyInterface $current_user,
+    PrivateTempStoreFactory $private_tempstore,
     LoggerChannelFactoryInterface $logger
   );
 
@@ -93,6 +130,48 @@ interface KeycloakServiceInterface {
    *   - session_iframe:        Session iframe URL.
    */
   public function getEndpoints();
+
+  /**
+   * Whether the currently logged in user was logged in using Keycloak.
+   *
+   * @return bool
+   *   TRUE, if user was logged in using Keycloak, FALSE otherwise.
+   */
+  public function isKeycloakUser();
+
+  /**
+   * Return an array of available Keycloak session info keys.
+   *
+   * @return array
+   *   Keycloak session info keys.
+   */
+  public function getSessionInfoDefaultKeys();
+
+  /**
+   * Return an associative array of Keycloak session information.
+   *
+   * @param array|null $keys
+   *   (optional) Array of session info keys to retrieve or NULL. If no
+   *   keys are provided, the entire session info will be returned.
+   *   Defaults to NULL.
+   *
+   * @return array
+   *   Associative array of Keycloak session information.
+   */
+  public function getSessionInfo($keys = NULL);
+
+  /**
+   * Store the Keycloak session information to the user session.
+   *
+   * @param array $info
+   *   Associative array with session information. The information that
+   *   will be stored is limited to the allowed keys returned by
+   *   self::getSessionInfoDefaultKeys().
+   *
+   * @return bool
+   *   TRUE, if the information was set, FALSE otherwise.
+   */
+  public function setSessionInfo(array $info);
 
   /**
    * Whether Keycloak multi-language support is enabled.
@@ -137,6 +216,67 @@ interface KeycloakServiceInterface {
    *   TRUE, if single sign-on is enabled, FALSE otherwise.
    */
   public function isSsoEnabled();
+
+  /**
+   * Whether RP (Drupal) initiated Single Sing-Out is enabled.
+   *
+   * @return bool
+   *   TRUE, if RP inititated sign out is enabled, FALSE otherwise.
+   */
+  public function isKeycloakSignOutEnabled();
+
+  /**
+   * Return the Keycloak Single Sing-Out endpoint.
+   *
+   * @return string
+   *   Keycloak Single Sing-Out endpoint.
+   */
+  public function getKeycloakSignOutEndpoint();
+
+  /**
+   * Return a RP (Drupal) initiated single sign-out response.
+   *
+   * @param array $session_information
+   *   Session information array holding the required id_token.
+   *
+   * @return \Symfony\Component\HttpFoundation\RedirectResponse
+   *   Redirect response redirecting to the sign out target route:
+   *   - '&lt;front&gt;' if Keycloak single sign-out is disabled.
+   *   - 'keycloak.logout' if Keycloak single sign-out is enabled.
+   */
+  public function getKeycloakSignoutResponse(array $session_information);
+
+  /**
+   * Whether OP (Keycloak) initiated Single Sing-Out is enabled.
+   *
+   * @return bool
+   *   TRUE, if OP inititated sign out is enabled, FALSE otherwise.
+   */
+  public function isCheckSessionEnabled();
+
+  /**
+   * Return the check session interval.
+   *
+   * @return int
+   *   The interval for check session requests in seconds.
+   */
+  public function getCheckSessionInterval();
+
+  /**
+   * Return the check session iframe URL.
+   *
+   * @return string
+   *   The URL of the Keycloak check session iframe.
+   */
+  public function getCheckSessionIframeUrl();
+
+  /**
+   * Return a configured Keycloak client plugin for the openid_connect module.
+   *
+   * @return \Drupal\openid_connect\Plugin\OpenIDConnectClientInterface
+   *   Keycloak client plugin for the openid_connect module.
+   */
+  public function getClientInstance();
 
   /**
    * Return Keycloak logger.

@@ -231,10 +231,42 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
     }
 
     $form['keycloak_sso'] = [
-      '#title' => $this->t('Enable Keycloak single sign-on (SSO)'),
+      '#title' => $this->t('Replace Drupal login with Keycloak single sign-on (SSO)'),
       '#type' => 'checkbox',
       '#default_value' => !empty($this->configuration['keycloak_sso']) ? $this->configuration['keycloak_sso'] : '',
-      '#description' => $this->t("Changes Drupal's authentication back-end to use Keycloak by default. Drupal's user login and registration pages will redirect to Keycloak. Existing users will only be able to login using their Drupal credentials at <em>/keycloak/login</em>."),
+      '#description' => $this->t("Changes Drupal's authentication back-end to use Keycloak by default. Drupal's user login and registration pages will redirect to Keycloak. Existing users will be able to login using their Drupal credentials at <em>/keycloak/login</em>."),
+    ];
+
+    $form['keycloak_sign_out'] = [
+      '#title' => $this->t('Enable Drupal-initiated single sign-out'),
+      '#type' => 'checkbox',
+      '#default_value' => !empty($this->configuration['keycloak_sign_out']) ? $this->configuration['keycloak_sign_out'] : 0,
+      '#description' => $this->t("Whether to sign out of Keycloak, when the user logs out of Drupal."),
+    ];
+    $form['check_session_enabled'] = [
+      '#title' => $this->t('Enable Keycloak-initiated single sign-out'),
+      '#type' => 'checkbox',
+      '#default_value' => !empty($this->configuration['check_session']['enabled']) ? $this->configuration['check_session']['enabled'] : 0,
+      '#description' => $this->t('Whether to log out of Drupal, when the user ends its Keycloak session.'),
+    ];
+    $form['check_session'] = [
+      '#title' => $this->t('Check session settings'),
+      '#type' => 'fieldset',
+      '#states' => [
+        'visible' => [
+          ':input[name="clients[keycloak][settings][check_session_enabled]"]' => ['checked' => TRUE],
+        ],
+      ],
+    ];
+    $form['check_session']['interval'] = [
+      '#title' => $this->t('Check session interval'),
+      '#type' => 'number',
+      '#min' => 1,
+      '#max' => 99999,
+      '#step' => 1,
+      '#size' => 5,
+      '#field_suffix' => $this->t('seconds'),
+      '#default_value' => !isset($this->configuration['check_session']['interval']) ? $this->configuration['check_session']['interval'] : 2,
     ];
 
     return $form;
@@ -285,10 +317,8 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
         }
 
         // Check whether there is an e-mail address conflict.
-        if (
-         $user = user_load_by_mail($userinfo['email']) &&
-         $account->id() != $user->id()
-        ) {
+        $user = user_load_by_mail($userinfo['email']);
+        if ($user && $account->id() != $user->id()) {
           drupal_set_message(
             t(
               'The e-mail address is already taken: @email',

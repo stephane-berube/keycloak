@@ -3,7 +3,7 @@ KEYCLOAK 8.x-1.x <a name="top"></a>
 
 CONTENTS OF THIS DOCUMENT
 -------------------------
-1. [Description](#description)
+1. [Introduction](#introduction)
 2. [Features](#features)
 3. [Requirements](#requirements)
 4. [Dependencies](#dependencies)
@@ -14,7 +14,7 @@ CONTENTS OF THIS DOCUMENT
 9. [Supporting Organizations](#supporting)
 
 
-DESCRIPTION <a name="description"></a>[top](#top)
+INTRODUCTION <a name="introduction"></a>[top](#top)
 -----------
 The Keycloak module provides a Keycloak login provider client for the
 [OpenID Connect](https://www.drupal.org/project/openid_connect) module.
@@ -90,25 +90,6 @@ specific settings:
   * Keycloak realm  
     The name of the realm your users belong to.
 
-  * Endpoints  
-    Tip: You can find your endpoint configuration at  
-    `https://example.com{:PORT}/auth/realms/{realm}/.well-known/openid-configuration`  
-
-      * Authorization endpoint  
-        The Keycloak OpenID authorization endpoint of your realm. This
-        typically looks like  
-        `https://example.com{:PORT}/auth/realms/{realm}/protocol/openid-connect/auth`  
-
-      * Token endpoint  
-        The Keycloak OpenID token endpoint of your realm. This
-        typically looks like  
-        `https://example.com{:PORT}/auth/realms/{realm}/protocol/openid-connect/token`  
-
-      * UserInfo endpoint  
-        The Keycloak OpenID user info endpoint of your realm. This
-        typically looks like  
-        `https://example.com{:PORT}/auth/realms/{realm}/protocol/openid-connect/userinfo`  
-
   * Update email address in user profile  
     The OpenID Connect module has no means to synchronize changed email
     addresses from the OpenID Connect provider. If you wish to update the email
@@ -118,9 +99,9 @@ specific settings:
     If changed email addresses from Keycloak are used for other users within
     your Drupal already, the module will show an error message and not change
     the existing email address in Drupal. This may lead to inconsistencies with
-    your Keycloak user database.
+    your Keycloak user database.  
 
-  * Enable multilanguage support  
+  * Enable multi-language support  
     This option is available only, if you work with a multi-language Drupal
     site. It enables language parameter forwarding to Keycloak and translates
     Keycloak locales to Drupal language codes (refer to the following Language
@@ -133,6 +114,31 @@ specific settings:
         [here](https://tools.ietf.org/html/bcp47#section-2.1).) If you are
         using languages as Chinese Simplified (zh-hans in Drupal and zh-CN in
         Keycloak), you may edit the locale codes accordingly in this section.  
+
+  * Enable Keycloak single sign-on (SSO)  
+    This option allows you to use Drupal with Keycloak as sole authentication
+    provider. The default authentication mechanisms of Drupal will be replaced
+    by the Keycloak login. E.g. opening the `/user/login` page of your Drupal
+    will automatically redirect to Keycloak for authentication.  
+    Please note: Existing users with a password set (e.g. the administrator
+    account) are still able to login using the fallback login page at
+    `/keycloak/login`, which will show the regular Drupal login form.  
+
+  * Enable Drupal-initiated single sign-out  
+    If a user logged in to Drupal using Keycloak, this option allows to end
+    the Keycloak session of this user, if he logs out of Drupal.  
+
+  * Enable Keycloak-initiated single sign-out
+    If a user logged in to Drupal using Keycloak, this option allows Drupal
+    to regularily check the validity of the Keycloak session using the
+    Keycloak check session Iframe. If the user ended its Keycloak session,
+    he will be logged out of Drupal as well.  
+
+      * Check session interval  
+        If Keycloak-initiated single sign-out is enabled, this value determines
+        the interval in seconds, in which Drupal will check whether the
+        Keycloak session has ended.
+
   
 For all other configuration options, please refer to the OpenID Connect module
 documentation.  

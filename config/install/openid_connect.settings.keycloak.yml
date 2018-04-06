@@ -2,8 +2,8 @@ enabled: false
 settings:
   client_id:
   client_secret:
-  keycloak_base: 'https://example.com/auth'
-  keycloak_realm: 'example_realm'
+  keycloak_base: ''
+  keycloak_realm: ''
   userinfo_update_email: false
   keycloak_i18n:
     enabled: false
@@ -15,4 +15,8 @@ settings:
         langcode: 'zh-hant'
         target: 'zh-HK'
   keycloak_sso: false
+  keycloak_sign_out: false
+  check_session:
+    enabled: false
+    interval: 2
   debug: false

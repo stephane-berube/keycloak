@@ -48,4 +48,17 @@ openid_connect.settings.keycloak:
                     label: 'Keycloak language code'
         keycloak_sso:
           type: boolean
-          label: 'Enable Keycloak single sign-on'
+          label: 'Replace Drupal login with Keycloak single sign-on'
+        keycloak_sign_out:
+          type: boolean
+          label: 'Enable Drupal-initiated single sign-out'
+        check_session:
+          type: mapping
+          label: 'Check session settings'
+          mapping:
+            enabled:
+              type: boolean
+              label: 'Enable Keycloak-initiated single sign-out'
+            interval:
+              type: integer
+              label: 'Session check interval'
