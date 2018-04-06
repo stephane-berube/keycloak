@@ -1,4 +1,6 @@
 (function ($, Drupal, drupalSettings) {
+  'use strict';
+
   Drupal.behaviors.keycloak = {
     attach: function (context, settings) {
 
