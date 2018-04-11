@@ -168,7 +168,10 @@ function keycloak_openid_connect_post_authorize(array $tokens, UserInterface $ac
   /* @var $keycloak \Drupal\keycloak\Service\KeycloakServiceInterface */
   $keycloak = \Drupal::service('keycloak.keycloak');
 
-  // Decode user data from ID token.
+  // Decode user data from ID token. The hook does not provide the decoded
+  // token information. So we create a new instance of the openid_connect
+  // Keycloak plugin and use its decode method to decode the token again.
+  // @see https://www.drupal.org/project/openid_connect/issues/2921095
   $client = $keycloak->getClientInstance();
   $user_data = $client->decodeIdToken($tokens['id_token']);
 

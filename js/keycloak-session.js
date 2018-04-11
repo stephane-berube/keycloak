@@ -1,9 +1,62 @@
+/**
+ * @file
+ * Keycloak session check Drupal behavior.
+ *
+ * Checks the Keycloak session ID and triggers logout, if the session has
+ * been expired externally.
+ *
+ * Remarks: In order to not being dependent on a certain version of Keycloak,
+ * we borrowed the important parts from the Keycloak JavaScript adapter. Thus,
+ * we're also using the homegrown Keycloak promise objects. Later versions of
+ * this script may be rewritten to use ES6 native promises and an improved
+ * handling for race conditions on expired sessions.
+ *
+ * @link http://www.keycloak.org/docs/3.1/securing_apps/topics/oidc/javascript-adapter.html
+ */
+
 (function ($, Drupal, drupalSettings) {
   'use strict';
 
+  /**
+   * Keycloak session check.
+   *
+   * @type {Drupal~behavior}
+   *
+   * @property {Drupal~behaviorAttach} attach
+   *   Adds an iframe element to the document that loads the Keycloak
+   *   session check script and initializes a periodic check for session
+   *   ID changes.
+   */
   Drupal.behaviors.keycloak = {
     attach: function (context, settings) {
 
+      /**
+       * Session iframe settings.
+       *
+       * @type {object}
+       *
+       * @property {boolean} initialized
+       *   Whether the session check iframe was initialized.
+       * @property {boolean} enable
+       *   Whether the session check is enabled.
+       * @property {string} iframeUrl
+       *   The URL to the Keycloak session check script. This is usually
+       *   an endpoint URL of the Keycloak authentication server.
+       * @property {number} interval
+       *   Session check interval in seconds.
+       * @property {string} logoutUrl
+       *   Drupal logout URL provided by the Keycloak module. This URL
+       *   will be redirected to, if the session has been expired externally.
+       * @property {boolean} logout
+       *   Whether a logout action is in progress. If true, no new session
+       *   check promises will be created.
+       * @property {string} clientId
+       *   Keycloak client ID.
+       * @property {string} sessionId
+       *   Keycloak session ID.
+       * @property {Array} callbackList
+       *   Array of active promises (FIFO).
+       */
       var sessionIframe = {
         initialized: false,
         enable: drupalSettings.keycloak.enableSessionCheck,
@@ -16,6 +69,12 @@
         callbackList: []
       };
 
+      /**
+       * Return a promise.
+       *
+       * @return {object}
+       *   Keycloak promise.
+       */
       function createPromise() {
         var p = {
           setSuccess: function (result) {
@@ -55,13 +114,15 @@
             }
           }
         };
+
         return p;
       }
 
       /**
        * Return window location origin.
        *
-       * @return {String} Location origin.
+       * @return {string}
+       *   Location origin.
        */
       function getOrigin() {
         if (!window.location.origin) {
@@ -75,7 +136,8 @@
       /**
        * Initialize session check iframe.
        *
-       *@return {promise} Promise.
+       * @return {object}
+       *   Keycloak promise.
        */
       function setupSessionCheckIframe() {
         var promise = createPromise();
@@ -175,6 +237,7 @@
         return promise.promise;
       }
 
+      // Initialize the session check.
       $(document).once('keycloak').each(function () {
         if (sessionIframe.enable && !sessionIframe.initialized) {
           setupSessionCheckIframe()
