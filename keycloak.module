@@ -149,7 +149,48 @@ function keycloak_form_openid_connect_admin_settings_submit(array &$form, FormSt
   $settings['check_session']['enabled'] = !empty($settings['check_session_enabled']);
   unset($settings['check_session_enabled']);
 
+  // Keycloak groups mapping.
+  $settings['keycloak_groups']['enabled'] = !empty($settings['keycloak_groups_enabled']);
+  unset($settings['keycloak_groups_enabled']);
+
+  $ruleset = $settings['keycloak_groups']['rules'];
+  $rules = [];
+  foreach ($ruleset as $rule) {
+    if (
+      $rule['role'] == 'NONE' ||
+      (
+        $rule['operation'] != 'empty' &&
+        $rule['operation'] != 'not_empty' &&
+        empty(trim($rule['pattern']))
+      )
+    ) {
+      continue;
+    }
+    if ($rule['operation'] == 'empty' || $rule['operation'] == 'not_empty') {
+      $rule['pattern'] = '';
+      $rule['case_sensitive'] = FALSE;
+    }
+    unset($rule['delete']);
+    $rules[] = $rule;
+  }
+  unset($settings['keycloak_groups']['add']);
+  $settings['keycloak_groups']['rules'] = $rules;
+
   $form_state->setValue(['clients', 'keycloak', 'settings'], $settings);
+}
+
+/**
+ * Implements hook_openid_connect_save_userinfo().
+ */
+function keycloak_openid_connect_save_userinfo(UserInterface $account, array $context) {
+  if ($context['plugin_id'] !== 'keycloak') {
+    return;
+  }
+
+  $roleMatcher = \Drupal::service('keycloak.role_matcher');
+  if ($roleMatcher->isEnabled() && $roleMatcher->hasRoleRules()) {
+    $roleMatcher->applyRoleRules($account, $context['userinfo']);
+  }
 }
 
 /**

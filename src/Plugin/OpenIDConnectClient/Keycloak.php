@@ -3,6 +3,8 @@
 namespace Drupal\keycloak\Plugin\OpenIDConnectClient;
 
 use GuzzleHttp\ClientInterface;
+use Drupal\Component\Uuid\UuidInterface;
+use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Language\LanguageInterface;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
@@ -27,6 +29,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * )
  */
 class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInterface, ContainerFactoryPluginInterface {
+  use DependencySerializationTrait;
 
   /**
    * The Keycloak service.
@@ -34,6 +37,20 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
    * @var \Drupal\keycloak\Service\KeycloakServiceInterface
    */
   protected $keycloak;
+
+  /**
+   * The Keycloak role matcher service.
+   *
+   * @var \Drupal\keycloak\Service\KeycloakRoleMatcher
+   */
+  protected $roleMatcher;
+
+  /**
+   * The UUID service.
+   *
+   * @var \Drupal\Component\Uuid\UuidInterface
+   */
+  protected $uuid;
 
   /**
    * Constructs an instance of the Keycloak client plugin.
@@ -50,6 +67,10 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
    *   The http client.
    * @param \Drupal\keycloak\Service\KeycloakServiceInterface $keycloak
    *   The Keycloak service.
+   * @param \Drupal\keycloak\Service\KeycloakRoleMatcher $role_matcher
+   *   The Keycloak role manager service.
+   * @param \Drupal\Component\Uuid\UuidInterface $uuid
+   *   The UUID service.
    * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_factory
    *   The logger factory.
    */
@@ -60,6 +81,8 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
     RequestStack $request_stack,
     ClientInterface $http_client,
     KeycloakServiceInterface $keycloak,
+    KeycloakRoleMatcher $role_matcher,
+    UuidInterface $uuid,
     LoggerChannelFactoryInterface $logger_factory
   ) {
     parent::__construct(
@@ -72,6 +95,8 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
     );
 
     $this->keycloak = $keycloak;
+    $this->roleMatcher = $role_matcher;
+    $this->uuid = $uuid;
   }
 
   /**
@@ -90,6 +115,8 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
       $container->get('request_stack'),
       $container->get('http_client'),
       $container->get('keycloak.keycloak'),
+      $container->get('keycloak.role_matcher'),
+      $container->get('uuid'),
       $container->get('logger.factory')
     );
   }
@@ -157,6 +184,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
    */
   public function buildConfigurationForm(array $form, FormStateInterface $form_state) {
     $form = parent::buildConfigurationForm($form, $form_state);
+    $form_state->setCached(FALSE);
 
     $form['keycloak_base'] = [
       '#title' => $this->t('Keycloak base URL'),
@@ -269,6 +297,59 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
       '#default_value' => !isset($this->configuration['check_session']['interval']) ? $this->configuration['check_session']['interval'] : 2,
     ];
 
+    $form['keycloak_groups_enabled'] = [
+      '#title' => $this->t('Enable user role mapping'),
+      '#type' => 'checkbox',
+      '#default_value' => !empty($this->configuration['keycloak_groups']['enabled']) ? $this->configuration['keycloak_groups']['enabled'] : '',
+      '#description' => $this->t('Enables assigning Drupal user roles based on Keycloak group name patterns.'),
+    ];
+
+    $form['keycloak_groups'] = [
+      '#title' => $this->t('User role assignment settings'),
+      '#type' => 'fieldset',
+      '#collapsible' => FALSE,
+      '#states' => [
+        'visible' => [
+          ':input[name="clients[keycloak][settings][keycloak_groups_enabled]"]' => ['checked' => TRUE],
+        ],
+      ],
+    ];
+    $form['keycloak_groups']['description'] = [
+      '#markup' => $this->t("<p>You can assign and remove Drupal user roles based on the user groups given to the user in Keycloak. The Keycloak user's groups will be retrieved using the UserInfo endpoint of your realm.<br />Before using this feature, you need to map group memberships to the userinfo within the mappers section of your Keycloak client settings.</p>"),
+    ];
+    $form['keycloak_groups']['claim_name'] = [
+      '#title' => $this->t('User groups claim name'),
+      '#type' => 'textfield',
+      '#default_value' => !empty($this->configuration['keycloak_groups']['claim_name']) ? $this->configuration['keycloak_groups']['claim_name'] : 'groups',
+      '#description' => $this->t('Name of the user groups claim. This can be a fully qualified name like "additional.groups". In this case, the user groups will be taken from the nested "groups" attribute of the "additional" claim.'),
+    ];
+    $form['keycloak_groups']['split_groups'] = [
+      '#title' => $this->t('Split group paths'),
+      '#type' => 'checkbox',
+      '#default_value' => !empty($this->configuration['keycloak_groups']['split_groups']) ? $this->configuration['keycloak_groups']['split_groups'] : '',
+      '#description' => $this->t('Allows splitting group paths into single group names. If enabled, Keycloak group paths will be splitted using the "/" character and every path segment will be treated as single user group name. E.g. the group path "/Internal/Public Relations" will be split into the groups "Internal" and "Public Relations", and the mapping rules will be applied to both groups. Please note: If this option is enabled, using "/" within any group name may have unintended side effects.'),
+    ];
+    $form['keycloak_groups']['split_groups_limit'] = [
+      '#title' => $this->t('Group path nesting limit'),
+      '#type' => 'number',
+      '#min' => 0,
+      '#max' => 99,
+      '#step' => 1,
+      '#size' => 2,
+      '#default_value' => !empty($this->configuration['keycloak_groups']['split_groups_limit']) ? $this->configuration['keycloak_groups']['split_groups_limit'] : 0,
+      '#description' => $this->t('Allows limiting the nesting level of split group paths. E.g. the group path "/Internal/Public Relations/Social Media" with a group path nesting limit of "1" will split the group path into "Internal" only, a group path nesting limit of "2" will return "Internal" and "Public Relations", and so on. A value of "0" will not limit nesting and return all groups.'),
+      '#states' => [
+        'visible' => [
+          ':input[name="clients[keycloak][settings][keycloak_groups][split_groups]"]' => ['checked' => TRUE],
+        ],
+      ],
+    ];
+    $form['keycloak_groups']['rules_description'] = [
+      '#markup' => sprintf('<strong>%s</strong>', $this->t('Mapping rules')),
+    ];
+
+    $form = array_merge_recursive($form, $this->getGroupRuleTable($form_state));
+
     return $form;
   }
 
@@ -355,6 +436,232 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
     }
 
     return $userinfo;
+  }
+
+  /**
+   * Ajax callback for a user group mapping rules table refresh.
+   *
+   * @param array $form
+   *   An associative array containing the structure of the form.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The current state of the form.
+   *
+   * @return array
+   *   Form builder array fragment for the user group mapping rules table.
+   */
+  public function rulesAjaxCallback(array &$form, FormStateInterface $form_state) {
+    return $form['clients']['keycloak']['settings']['keycloak_groups']['rules'];
+  }
+
+  /**
+   * Submit function for the 'Add rule' ajax callback.
+   *
+   * Adds an empty rule row to the user group mapping rules table.
+   *
+   * @param array $form
+   *   An associative array containing the structure of the form.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The current state of the form.
+   */
+  public function addRuleSubmit(array &$form, FormStateInterface $form_state) {
+    $uuid = $this->uuid->generate();
+    $rules = $form_state->get('rules');
+    array_push($rules, $uuid);
+    $form_state->set('rules', $rules);
+    $form_state->setRebuild();
+  }
+
+  /**
+   * Submit function for the 'Delete rule' ajax callback.
+   *
+   * Removes a rule from the user group mapping rules table.
+   *
+   * @param array $form
+   *   An associative array containing the structure of the form.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The current state of the form.
+   */
+  public function deleteRuleSubmit(array &$form, FormStateInterface $form_state) {
+    $target_id = $form_state->getTriggeringElement()['#attributes']['data-delete-target'];
+    // Remove the row from form.
+    $rules = $form_state->get('rules');
+    $rules = array_diff($rules, [$target_id]);
+    $form_state->set('rules', $rules);
+    // Rebuild the form.
+    $form_state->setRebuild();
+  }
+
+  /**
+   * Helper method returning user group mapping rules form array table.
+   *
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The current state of the form.
+   *
+   * @return array
+   *   Form array definition for a draggable table of user group mapping
+   *   rules.
+   */
+  protected function getGroupRuleTable(FormStateInterface &$form_state) {
+    $form = [];
+
+    $form['keycloak_groups']['rules'] = [
+      '#type' => 'table',
+      '#title' => $this->t('Group mapping rules'),
+      '#prefix' => '<div id="keycloak-group-roles-replace">',
+      '#suffix' => '</div>',
+      '#header' => [
+        '',
+        $this->t('Weight'),
+        $this->t('User role'),
+        $this->t('Action'),
+        $this->t('Evaluation type'),
+        $this->t('Pattern'),
+        $this->t('Case sensitive'),
+        $this->t('Enabled'),
+        '',
+      ],
+      '#empty' => $this->t('There are no rules yet.'),
+      '#tableselect' => FALSE,
+      '#tabledrag' => [
+        [
+          'action' => 'order',
+          'relationship' => 'sibling',
+          'group' => 'keycloak-groups-rules-weight',
+        ],
+      ],
+    ];
+
+    $roles = ['NONE' => ''] + $this->roleMatcher->getRoleOptions();
+    $operations = $this->roleMatcher->getEvalOperationOptions();
+
+    // Get saved rules from configuration.
+    $config_rules = $this->configuration['keycloak_groups']['rules'];
+    // Create associative array of rules with rule id as keys.
+    $rules = [];
+    foreach ($config_rules as $rule) {
+      $rules[$rule['id']] = $rule;
+    }
+    // Cross-check whether the rules are stored in the form state.
+    $fs_rules = $form_state->get('rules');
+    if (empty($fs_rules)) {
+      // Get the rule keys.
+      $fs_rules = array_keys($rules);
+      // Add a new item at the bottom.
+      array_push($fs_rules, $this->uuid->generate());
+      // Remember these rows by IDs.
+      $form_state->set('rules', $fs_rules);
+    }
+
+    // For every rule add a row to our form.
+    foreach ($fs_rules as $key) {
+      $row = $this->getGroupRuleRow($roles, $operations, isset($rules[$key]) ? $rules[$key] : ['id' => $key]);
+      $form['keycloak_groups']['rules'][$key] = $row;
+    }
+
+    $form['keycloak_groups']['add'] = [
+      '#type' => 'submit',
+      '#name' => 'add',
+      '#value' => $this->t('Add rule'),
+      '#submit' => [[$this, 'addRuleSubmit']],
+      '#ajax' => [
+        'callback' => [$this, 'rulesAjaxCallback'],
+        'wrapper' => 'keycloak-group-roles-replace',
+        'effect' => 'none',
+      ],
+    ];
+
+    return $form;
+  }
+
+  /**
+   * Helper method to construct a setting form user group role mapping row.
+   *
+   * @param array $roles
+   *   Options array holding the available user roles and an empty
+   *   placeholder keyed by 'NONE'.
+   * @param array $operations
+   *   Options array holding the available evaluation methods.
+   * @param array $defaults
+   *   Default values for the rule row.
+   *
+   * @return array
+   *   Array of form element definitions for a user group role mapping rule.
+   */
+  protected function getGroupRuleRow(array $roles, array $operations, array $defaults = []) {
+    $uuid = empty($defaults['id']) ? $this->uuid->generate() : $defaults['id'];
+
+    $row['#attributes']['class'][] = 'draggable';
+    $row['#weight'] = !empty($defaults['weight']) ? $defaults['weight'] : 0;
+    $row['id'] = [
+      '#type' => 'hidden',
+      '#value' => $uuid,
+    ];
+    $row['weight'] = [
+      '#type' => 'weight',
+      '#title' => t('Weight'),
+      '#title_display' => 'invisible',
+      '#default_value' => !empty($defaults['weight']) ? $defaults['weight'] : 0,
+      '#attributes' => ['class' => ['keycloak-groups-rules-weight']],
+    ];
+    $row['role'] = [
+      '#title' => $this->t('User role'),
+      '#title_display' => 'invisible',
+      '#type' => 'select',
+      '#options' => $roles,
+      '#default_value' => !empty($defaults['role']) ? $defaults['role'] : NULL,
+    ];
+    $row['action'] = [
+      '#title' => $this->t('Action'),
+      '#title_display' => 'invisible',
+      '#type' => 'select',
+      '#options' => [
+        'add' => $this->t('add'),
+        'remove' => $this->t('remove'),
+      ],
+      '#default_value' => !empty($defaults['action']) ? $defaults['action'] : NULL,
+    ];
+    $row['operation'] = [
+      '#title' => $this->t('Evaluation type'),
+      '#title_display' => 'invisible',
+      '#type' => 'select',
+      '#options' => $operations,
+      '#default_value' => !empty($defaults['operation']) ? $defaults['operation'] : NULL,
+    ];
+    $row['pattern'] = [
+      '#title' => $this->t('Pattern'),
+      '#title_display' => 'invisible',
+      '#type' => 'textfield',
+      '#size' => 50,
+      '#default_value' => !empty($defaults['pattern']) ? $defaults['pattern'] : NULL,
+    ];
+    $row['case_sensitive'] = [
+      '#title' => $this->t('Case sensitive'),
+      '#title_display' => 'invisible',
+      '#type' => 'checkbox',
+      '#default_value' => !empty($defaults['case_sensitive']) ? $defaults['case_sensitive'] : FALSE,
+    ];
+    $row['enabled'] = [
+      '#title' => $this->t('Case sensitive'),
+      '#title_display' => 'invisible',
+      '#type' => 'checkbox',
+      '#default_value' => !empty($defaults['enabled']) ? $defaults['enabled'] : FALSE,
+    ];
+    $row['delete'] = [
+      '#type' => 'submit',
+      '#name' => 'delete[row-' . $uuid . ']',
+      '#value' => $this->t('Delete'),
+      '#submit' => [[$this, 'deleteRuleSubmit']],
+      '#attributes' => [
+        'data-delete-target' => $uuid,
+      ],
+      '#ajax' => [
+        'callback' => [$this, 'rulesAjaxCallback'],
+        'wrapper' => 'keycloak-group-roles-replace',
+        'effect' => 'none',
+      ],
+    ];
+
+    return $row;
   }
 
 }
