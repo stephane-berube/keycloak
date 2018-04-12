@@ -11,7 +11,7 @@ use Drupal\Core\Routing\TrustedRedirectResponse;
 use Drupal\Core\Url;
 use Drupal\openid_connect\Plugin\OpenIDConnectClientBase;
 use Drupal\openid_connect\Plugin\OpenIDConnectClientInterface;
-use Drupal\openid_connect\StateToken;
+use Drupal\openid_connect\OpenIDConnectStateToken;
 use Drupal\keycloak\Service\KeycloakServiceInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -118,7 +118,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
         'response_type' => 'code',
         'scope' => $scope,
         'redirect_uri' => $redirect_uri->getGeneratedUrl(),
-        'state' => StateToken::create(),
+        'state' => OpenIDConnectStateToken::create(),
       ],
     ];
 

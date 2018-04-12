@@ -9,7 +9,7 @@ use Drupal\Core\PathProcessor\InboundPathProcessorInterface;
 use Drupal\Core\Routing\TrustedRedirectResponse;
 use Drupal\Core\Url;
 use Drupal\keycloak\Service\KeycloakServiceInterface;
-use Drupal\openid_connect\StateToken;
+use Drupal\openid_connect\OpenIDConnectStateToken;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\HttpKernel\Event\GetResponseEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -106,7 +106,7 @@ class KeycloakRequestSubscriber implements EventSubscriberInterface {
 
     // Construct the Keycloak end session endpoint parameters.
     $query = [
-      'state' => StateToken::create(),
+      'state' => OpenIDConnectStateToken::create(),
     ] + $request_query;
 
     // Whether to add language parameter. This is only needed,

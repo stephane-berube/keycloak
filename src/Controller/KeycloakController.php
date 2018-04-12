@@ -5,7 +5,7 @@ namespace Drupal\keycloak\Controller;
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\keycloak\Service\KeycloakServiceInterface;
-use Drupal\openid_connect\Claims;
+use Drupal\openid_connect\OpenIDConnectClaims;
 use Drupal\openid_connect\Plugin\OpenIDConnectClientManager;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -36,7 +36,7 @@ class KeycloakController extends ControllerBase {
   /**
    * The OpenID Connect claims.
    *
-   * @var \Drupal\openid_connect\Claims
+   * @var \Drupal\openid_connect\OpenIDConnectClaims
    */
   protected $claims;
 
@@ -63,7 +63,7 @@ class KeycloakController extends ControllerBase {
    *   Account proxy for the currently logged-in user.
    * @param \Drupal\openid_connect\Plugin\OpenIDConnectClientManager $plugin_manager
    *   The OpenID Connect plug-in manager.
-   * @param \Drupal\openid_connect\Claims $claims
+   * @param \Drupal\openid_connect\OpenIDConnectClaims $claims
    *   The OpenID Connect claims.
    * @param \Symfony\Component\HttpFoundation\RequestStack $request_stack
    *   The request stack.
@@ -72,7 +72,7 @@ class KeycloakController extends ControllerBase {
     KeycloakServiceInterface $keycloak,
     AccountProxyInterface $current_user,
     OpenIDConnectClientManager $plugin_manager,
-    Claims $claims,
+    OpenIDConnectClaims $claims,
     RequestStack $request_stack
   ) {
     $this->keycloak = $keycloak;
