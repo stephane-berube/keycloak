@@ -199,9 +199,13 @@ function keycloak_openid_connect_save_userinfo(UserInterface $account, array $co
  * Stores the Keycloak session_state parameter to the logged in user's
  * session.
  */
-function keycloak_openid_connect_post_authorize(array $tokens, UserInterface $account, array $userinfo, $plugin_id) {
-  // Whether the client used for authentication was not keycloak.
-  if (empty($plugin_id) || $plugin_id !== 'keycloak') {
+function keycloak_openid_connect_post_authorize(UserInterface $account, array $context) {
+  // Whether the client used for authentication was not keycloak or
+  // no session_state was provided by the IdP.
+  if (
+    empty($context['plugin_id'])
+    || $context['plugin_id'] !== 'keycloak'
+    || !isset($context['user_data']['session_state'])) {
     // Nothing to do. Bail out.
     return;
   }
@@ -209,27 +213,15 @@ function keycloak_openid_connect_post_authorize(array $tokens, UserInterface $ac
   /* @var $keycloak \Drupal\keycloak\Service\KeycloakServiceInterface */
   $keycloak = \Drupal::service('keycloak.keycloak');
 
-  // Decode user data from ID token. The hook does not provide the decoded
-  // token information. So we create a new instance of the openid_connect
-  // Keycloak plugin and use its decode method to decode the token again.
-  // @see https://www.drupal.org/project/openid_connect/issues/2921095
-  $client = $keycloak->getClientInstance();
-  $user_data = $client->decodeIdToken($tokens['id_token']);
-
-  // Whether a session_state was provided by the IdP.
-  if (!isset($user_data['session_state'])) {
-    return;
-  }
-
   // Get the session ID (OpenID Connect 'session_state').
-  $session_state = $user_data['session_state'];
+  $session_state = $context['user_data']['session_state'];
   // Get the client ID (OpenID Connect audience = 'aud').
-  $client_id = $user_data['aud'];
+  $client_id = $context['user_data']['aud'];
 
   $session_info = [
-    KeycloakServiceInterface::KEYCLOAK_SESSION_ACCESS_TOKEN => $tokens['access_token'],
-    KeycloakServiceInterface::KEYCLOAK_SESSION_REFRESH_TOKEN => $tokens['refresh_token'],
-    KeycloakServiceInterface::KEYCLOAK_SESSION_ID_TOKEN => $tokens['id_token'],
+    KeycloakServiceInterface::KEYCLOAK_SESSION_ACCESS_TOKEN => $context['tokens']['access_token'],
+    KeycloakServiceInterface::KEYCLOAK_SESSION_REFRESH_TOKEN => $context['tokens']['refresh_token'],
+    KeycloakServiceInterface::KEYCLOAK_SESSION_ID_TOKEN => $context['tokens']['id_token'],
     KeycloakServiceInterface::KEYCLOAK_SESSION_CLIENT_ID => $client_id,
     KeycloakServiceInterface::KEYCLOAK_SESSION_SESSION_ID => $session_state,
   ];
