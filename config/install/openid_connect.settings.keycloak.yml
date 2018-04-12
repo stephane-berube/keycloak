@@ -19,10 +19,4 @@ settings:
   check_session:
     enabled: false
     interval: 2
-  keycloak_groups:
-    enabled: false
-    claim_name: 'groups'
-    split_groups: false
-    split_groups_limit: 0
-    rules: { }
   debug: false

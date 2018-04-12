@@ -11,7 +11,7 @@
     "source": "http://cgit.drupalcode.org/keycloak"
   },
   "require": {
-    "drupal/openid_connect": "1.x-dev"
+    "drupal/openid_connect": "^1.0"
   },
   "authors": [
     {
