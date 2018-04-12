@@ -24,6 +24,13 @@ class KeycloakService implements KeycloakServiceInterface {
   protected $config;
 
   /**
+   * Client plugin manager of the OpenID Connect module.
+   *
+   * @var \Drupal\openid_connect\Plugin\OpenIDConnectClientManager
+   */
+  protected $oidcClientManager;
+
+  /**
    * A language manager instance.
    *
    * @var \Drupal\Core\Language\LanguageManagerInterface
@@ -64,12 +71,14 @@ class KeycloakService implements KeycloakServiceInterface {
    */
   public function __construct(
     ConfigFactoryInterface $config_factory,
+    OpenIDConnectClientManager $oidc_client_manager,
     LanguageManagerInterface $language_manager,
     AccountProxyInterface $current_user,
     PrivateTempStoreFactory $private_tempstore,
     LoggerChannelFactoryInterface $logger
   ) {
     $this->config = $config_factory->get('openid_connect.settings.keycloak');
+    $this->oidcClientManager = $oidc_client_manager;
     $this->languageManager = $language_manager;
     $this->currentUser = $current_user;
     $this->privateTempstore = $private_tempstore;
@@ -303,6 +312,16 @@ class KeycloakService implements KeycloakServiceInterface {
    */
   public function getCheckSessionIframeUrl() {
     return $this->getEndpoints()['session_iframe'];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getClientInstance() {
+    return $this->oidcClientManager->createInstance(
+      'keycloak',
+      $this->config
+    );
   }
 
   /**

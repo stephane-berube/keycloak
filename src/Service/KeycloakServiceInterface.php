@@ -271,6 +271,14 @@ interface KeycloakServiceInterface {
   public function getCheckSessionIframeUrl();
 
   /**
+   * Return a configured Keycloak client plugin for the openid_connect module.
+   *
+   * @return \Drupal\openid_connect\Plugin\OpenIDConnectClientInterface
+   *   Keycloak client plugin for the openid_connect module.
+   */
+  public function getClientInstance();
+
+  /**
    * Return Keycloak logger.
    *
    * @return \Psr\Log\LoggerInterface
