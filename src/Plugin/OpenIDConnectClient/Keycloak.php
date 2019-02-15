@@ -266,7 +266,7 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
       '#step' => 1,
       '#size' => 5,
       '#field_suffix' => $this->t('seconds'),
-      '#default_value' => !isset($this->configuration['check_session']['interval']) ? $this->configuration['check_session']['interval'] : 2,
+      '#default_value' => isset($this->configuration['check_session']['interval']) ? $this->configuration['check_session']['interval'] : 2,
     ];
 
     return $form;
