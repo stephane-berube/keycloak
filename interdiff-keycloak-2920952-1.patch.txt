@@ -1,0 +1,1089 @@
+diff --git a/config/install/openid_connect.settings.keycloak.yml b/config/install/openid_connect.settings.keycloak.yml
+index 874ed44..56fc510 100644
+--- a/config/install/openid_connect.settings.keycloak.yml
++++ b/config/install/openid_connect.settings.keycloak.yml
+@@ -20,4 +20,8 @@ settings:
+     split_groups: false
+     split_groups_limit: 0
+     rules: { }
++  keycloak_sign_out: false
++  check_session:
++    enabled: false
++    interval: 2
+   debug: false
+diff --git a/config/schema/keycloak.schema.yml b/config/schema/keycloak.schema.yml
+index 0793e15..58a7caa 100644
+--- a/config/schema/keycloak.schema.yml
++++ b/config/schema/keycloak.schema.yml
+@@ -91,3 +91,16 @@ openid_connect.settings.keycloak:
+                   enabled:
+                     type: boolean
+                     label: 'enabled'
++        keycloak_sign_out:
++          type: boolean
++          label: 'Enable Drupal-initiated single sign-out'
++        check_session:
++          type: mapping
++          label: 'Check session settings'
++          mapping:
++            enabled:
++              type: boolean
++              label: 'Enable Keycloak-initiated single sign-out'
++            interval:
++              type: integer
++              label: 'Session check interval'
+diff --git a/js/keycloak-session.js b/js/keycloak-session.js
+new file mode 100644
+index 0000000..f150926
+--- /dev/null
++++ b/js/keycloak-session.js
+@@ -0,0 +1,183 @@
++(function ($, Drupal, drupalSettings) {
++  'use strict';
++  Drupal.behaviors.keycloak = {
++    attach: function (context, settings) {
++
++      var sessionIframe = {
++        initialized: false,
++        enable: drupalSettings.keycloak.enableSessionCheck,
++        iframeUrl: drupalSettings.keycloak.sessionCheckIframeUrl,
++        interval: isNaN(drupalSettings.keycloak.sessionCheckInterval) ? 2 : Number(drupalSettings.keycloak.sessionCheckInterval),
++        logoutUrl: drupalSettings.keycloak.logoutUrl,
++        logout: drupalSettings.keycloak.logout,
++        clientId: drupalSettings.keycloak.clientId,
++        sessionId: drupalSettings.keycloak.sessionId,
++        callbackList: []
++      };
++
++      function createPromise () {
++        var p = {
++          setSuccess: function (result) {
++            p.success = true;
++            p.result = result;
++            if (p.successCallback) {
++              p.successCallback(result);
++            }
++          },
++
++          setError: function (result) {
++            p.error = true;
++            p.result = result;
++            if (p.errorCallback) {
++              p.errorCallback(result);
++            }
++          },
++
++          promise: {
++            success: function (callback) {
++              if (p.success) {
++                callback(p.result);
++              } else if (!p.error) {
++                p.successCallback = callback;
++              }
++              return p.promise;
++            },
++            error: function (callback) {
++              if (p.error) {
++                callback(p.result);
++              } else if (!p.success) {
++                p.errorCallback = callback;
++              }
++              return p.promise;
++            }
++          }
++        };
++        return p;
++      }
++
++      /**
++       * Return window location origin.
++       *
++       * @returns {String}
++       */
++      function getOrigin() {
++        if (!window.location.origin) {
++          return window.location.protocol + "//" + window.location.hostname + (window.location.port ? ':' + window.location.port: '');
++        } else {
++          return window.location.origin;
++        }
++      }
++
++      /**
++       * Initialize session check iframe.
++       */
++      function setupSessionCheckIframe () {
++        var promise = createPromise();
++
++        if (!sessionIframe.enable) {
++          promise.setSuccess();
++          return promise.promise;
++        }
++
++        if (sessionIframe.iframe) {
++          promise.setSuccess();
++          return promise.promise;
++        }
++
++        var iframe = document.createElement('iframe');
++        sessionIframe.iframe = iframe;
++
++        iframe.onload = function () {
++          var iframeUrl = sessionIframe.iframeUrl;
++          if (iframeUrl.charAt(0) === '/') {
++            sessionIframe.iframeOrigin = getOrigin();
++          } else {
++            sessionIframe.iframeOrigin = iframeUrl.substring(0, iframeUrl.indexOf('/', 8));
++          }
++          promise.setSuccess();
++
++          setTimeout(check, sessionIframe.interval * 1000);
++        };
++
++        iframe.setAttribute('src', sessionIframe.iframeUrl);
++        iframe.setAttribute('title', 'keycloak-session-iframe');
++        iframe.style.display = 'none';
++        document.body.appendChild(iframe);
++
++        var messageCallback = function (event) {
++          if ((event.origin !== sessionIframe.iframeOrigin) || (sessionIframe.iframe.contentWindow !== event.source)) {
++            return;
++          }
++
++          if (!(event.data === 'unchanged' || event.data === 'changed' || event.data === 'error')) {
++            return;
++          }
++
++          if (event.data !== 'unchanged') {
++            sessionIframe.logout = true;
++          }
++
++          var callbacks = sessionIframe.callbackList.splice(0, sessionIframe.callbackList.length);
++
++          for (var i = callbacks.length - 1; i >= 0; --i) {
++            var promise = callbacks[i];
++            if (event.data === 'unchanged') {
++              promise.setSuccess();
++            } else {
++              promise.setError();
++            }
++          }
++        };
++
++        window.addEventListener('message', messageCallback, false);
++
++        var sessionExpiredCallback = function () {
++          // For now, we simply redirect to the logout page.
++          // To meeting OpenID Connect specifications, we should first
++          // try to refresh the session by triggering a sign on request
++          // without prompt.
++          window.location.href = sessionIframe.logoutUrl;
++        };
++
++        var check = function () {
++          checkSessionIframe().error(sessionExpiredCallback);
++          if (!sessionIframe.logout) {
++            setTimeout(check, sessionIframe.interval * 1000);
++          }
++        };
++
++        return promise.promise;
++      }
++
++      function checkSessionIframe () {
++        var promise = createPromise();
++
++        if (sessionIframe.iframe && sessionIframe.iframeOrigin) {
++          var msg = sessionIframe.clientId + ' ' + sessionIframe.sessionId;
++          sessionIframe.callbackList.push(promise);
++          var origin = sessionIframe.iframeOrigin;
++          if (sessionIframe.callbackList.length === 1) {
++            sessionIframe.iframe.contentWindow.postMessage(msg, origin);
++          }
++        } else {
++          promise.setSuccess();
++        }
++
++        return promise.promise;
++      }
++
++      $(document).once('keycloak').each(function() {
++        if (sessionIframe.enable && !sessionIframe.initialized) {
++          setupSessionCheckIframe()
++            .success(function() {
++              sessionIframe.initialized;
++            })
++            .error(function () {
++              console.log('[KEYCLOAK SSO] Error initializing session check iframe.');
++            });
++        }
++      });
++
++    }
++  };
++})(jQuery, Drupal, drupalSettings);
+diff --git a/keycloak.libraries.yml b/keycloak.libraries.yml
+new file mode 100644
+index 0000000..611c569
+--- /dev/null
++++ b/keycloak.libraries.yml
+@@ -0,0 +1,8 @@
++keycloak-session:
++  version: 1.x
++  js:
++    js/keycloak-session.js: {}
++  dependencies:
++    - core/jquery
++    - core/jquery.once
++    - core/drupalSettings
+diff --git a/keycloak.module b/keycloak.module
+index 6583142..c9d1f45 100644
+--- a/keycloak.module
++++ b/keycloak.module
+@@ -6,6 +6,8 @@
+  */
+ 
+ use Drupal\Core\Form\FormStateInterface;
++use Drupal\Core\Url;
++use Drupal\keycloak\Service\KeycloakServiceInterface;
+ use Drupal\user\UserInterface;
+ 
+ /**
+@@ -84,6 +86,10 @@ function keycloak_form_openid_connect_admin_settings_submit(array &$form, FormSt
+   unset($settings['keycloak_groups']['add']);
+   $settings['keycloak_groups']['rules'] = $rules;
+ 
++  // Single sign-out.
++  $settings['check_session']['enabled'] = !empty($settings['check_session_enabled']);
++  unset($settings['check_session_enabled']);
++
+   $form_state->setValue(['clients', 'keycloak', 'settings'], $settings);
+ }
+ 
+@@ -100,3 +106,83 @@ function keycloak_openid_connect_save_userinfo_alter(UserInterface &$account, ar
+     $roleMatcher->applyRoleRules($account, $context['userinfo']);
+   }
+ }
++
++/**
++ * Implements hook_openid_connect_post_authorize().
++ *
++ * Stores the Keycloak session_state parameter to the logged in user's
++ * session.
++ */
++function keycloak_openid_connect_post_authorize(UserInterface $account, array $context) {
++  // Whether the client used for authentication was not keycloak.
++  if (!isset($context['plugin_id']) || $context['plugin_id'] != 'keycloak') {
++    // Nothing to do. Bail out.
++    return;
++  }
++
++  // Whether a session_state was provided by the IdP.
++  if (!isset($context['user_data']['session_state'])) {
++    return;
++  }
++
++  // Get the session ID (OpenID Connect 'session_state').
++  $session_state = $context['user_data']['session_state'];
++  // Get the client ID (OpenID Connect audience = 'aud').
++  $client_id = $context['user_data']['aud'];
++
++  $session_info = [
++    KeycloakServiceInterface::KEYCLOAK_SESSION_ACCESS_TOKEN => $context['tokens']['access_token'],
++    KeycloakServiceInterface::KEYCLOAK_SESSION_REFRESH_TOKEN => $context['tokens']['refresh_token'],
++    KeycloakServiceInterface::KEYCLOAK_SESSION_ID_TOKEN => $context['tokens']['id_token'],
++    KeycloakServiceInterface::KEYCLOAK_SESSION_CLIENT_ID => $client_id,
++    KeycloakServiceInterface::KEYCLOAK_SESSION_SESSION_ID => $session_state,
++  ];
++
++  $keycloak = \Drupal::service('keycloak.keycloak');
++  $keycloak->setSessionInfo($session_info);
++}
++
++/**
++ * Implements hook_page_attachments_alter().
++ *
++ * Add our Keycloak session check to the page, if the user was logged
++ * in with Keycloak and SSO is enabled.
++ */
++function keycloak_page_attachments_alter(array &$build) {
++  $keycloak = \Drupal::service('keycloak.keycloak');
++
++  // Whether the current user is not a Keycloak user or check session
++  // is disabled.
++  if (!$keycloak->isKeycloakUser() || !$keycloak->isCheckSessionEnabled()) {
++    return;
++  }
++
++  $session_info = $keycloak->getSessionInfo([
++    KeycloakServiceInterface::KEYCLOAK_SESSION_CLIENT_ID,
++    KeycloakServiceInterface::KEYCLOAK_SESSION_SESSION_ID,
++  ]);
++  // Whether no session parameters were found.
++  if (
++    empty($session_info[KeycloakServiceInterface::KEYCLOAK_SESSION_CLIENT_ID]) ||
++    empty($session_info[KeycloakServiceInterface::KEYCLOAK_SESSION_SESSION_ID])
++  ) {
++    return;
++  }
++
++  // Attach session check JS and session information to the page.
++  $build['#attached']['library'][] = 'keycloak/keycloak-session';
++  $build['#attached']['drupalSettings']['keycloak'] = [
++    'enableSessionCheck' => TRUE,
++    'sessionCheckInterval' => $keycloak->getCheckSessionInterval(),
++    'sessionCheckIframeUrl' => $keycloak->getCheckSessionIframeUrl(),
++    'logoutUrl' => Url::fromRoute('user.logout', [], [
++      'query' => [
++        'op_initiated' => 1,
++      ],
++      'absolute' => TRUE,
++    ])->toString(),
++    'logout' => FALSE,
++    'clientId' => $session_info[KeycloakServiceInterface::KEYCLOAK_SESSION_CLIENT_ID],
++    'sessionId' => $session_info[KeycloakServiceInterface::KEYCLOAK_SESSION_SESSION_ID],
++  ];
++}
+diff --git a/keycloak.routing.yml b/keycloak.routing.yml
+new file mode 100644
+index 0000000..f020585
+--- /dev/null
++++ b/keycloak.routing.yml
+@@ -0,0 +1,6 @@
++keycloak.logout:
++  path: 'keycloak/logout'
++  defaults:
++    _controller: '\Drupal\keycloak\Controller\KeycloakController::logout'
++  options:
++    no_cache: TRUE
+diff --git a/keycloak.services.yml b/keycloak.services.yml
+index 42a60fe..186f34c 100644
+--- a/keycloak.services.yml
++++ b/keycloak.services.yml
+@@ -1,7 +1,19 @@
+ services:
+   keycloak.keycloak:
+     class: Drupal\keycloak\Service\KeycloakService
+-    arguments: ['@config.factory', '@language_manager', '@logger.factory']
++    arguments: ['@config.factory', '@language_manager', '@current_user', '@user.private_tempstore', '@logger.factory']
++
+   keycloak.role_matcher:
+     class: Drupal\keycloak\Service\KeycloakRoleMatcher
+     arguments: ['@config.factory', '@string_translation', '@logger.factory']
++
++  keycloak.route_subscriber:
++    class: Drupal\keycloak\Routing\KeycloakRouteSubscriber
++    tags:
++      - { name: event_subscriber }
++
++  keycloak.response_subscriber:
++    class: Drupal\keycloak\EventSubscriber\KeycloakRequestSubscriber
++    arguments: ['@keycloak.keycloak', '@language_manager', '@path_processor_manager', '@path.matcher']
++    tags:
++      - { name: event_subscriber }
+diff --git a/src/Controller/KeycloakController.php b/src/Controller/KeycloakController.php
+new file mode 100644
+index 0000000..cfda8dd
+--- /dev/null
++++ b/src/Controller/KeycloakController.php
+@@ -0,0 +1,99 @@
++<?php
++
++namespace Drupal\keycloak\Controller;
++
++use Drupal\Core\Controller\ControllerBase;
++use Drupal\keycloak\KeycloakService;
++use Symfony\Component\DependencyInjection\ContainerInterface;
++use Symfony\Component\HttpFoundation\RequestStack;
++
++/**
++ * Keycloak controller.
++ *
++ * Provides controller actions for custom user login and logout.
++ *
++ * @see \Drupal\keycloak\Routing\RouteSubscriber
++ */
++class KeycloakController extends ControllerBase {
++
++  /**
++   * The Keycloak service.
++   *
++   * @var \Drupal\keycloak\KeycloakService
++   */
++  protected $keycloak;
++
++  /**
++   * The request stack used to access request globals.
++   *
++   * @var \Symfony\Component\HttpFoundation\RequestStack
++   */
++  protected $requestStack;
++
++  /**
++   * Constructs a KeycloakController object.
++   *
++   * @param \Drupal\keycloak\KeycloakService $keycloak
++   *   A Keycloak service instance.
++   * @param \Symfony\Component\HttpFoundation\RequestStack $request_stack
++   *   The request stack.
++   */
++  public function __construct(KeycloakService $keycloak, RequestStack $request_stack) {
++    $this->keycloak = $keycloak;
++    $this->requestStack = $request_stack;
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public static function create(ContainerInterface $container) {
++    return new static(
++      $container->get('keycloak.keycloak'),
++      $container->get('request_stack')
++    );
++  }
++
++  /**
++   * Logs the current user out.
++   *
++   * @return \Symfony\Component\HttpFoundation\RedirectResponse
++   *   A redirect to either Keycloak or the front page.
++   */
++  public function logout() {
++    $rp_signout = NULL;
++
++    if (
++      !$this->requestStack->getCurrentRequest()->query->get('op_initiated') &&
++      $this->keycloak->isEnabled() &&
++      $this->keycloak->isKeycloakUser() &&
++      $this->keycloak->isRpSignOutEnabled()
++    ) {
++      $rp_signout = $this->keycloak->getSessionInfo([
++        KeycloakService::KEYCLOAK_SESSION_ID_TOKEN,
++      ]);
++    }
++
++    if (\Drupal::currentUser()->isAuthenticated()) {
++      user_logout();
++    }
++
++    if (!empty($rp_signout[KeycloakService::KEYCLOAK_SESSION_ID_TOKEN])) {
++      $response = $this->keycloak->getRpSignoutResponse($rp_signout);
++      return $response;
++    }
++
++    return $this->redirect('<front>');
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function content() {
++    $build = [
++      '#type' => 'markup',
++      '#markup' => t('Hello World!'),
++    ];
++    return $build;
++  }
++
++}
+diff --git a/src/EventSubscriber/KeycloakRequestSubscriber.php b/src/EventSubscriber/KeycloakRequestSubscriber.php
+new file mode 100644
+index 0000000..b0beb3d
+--- /dev/null
++++ b/src/EventSubscriber/KeycloakRequestSubscriber.php
+@@ -0,0 +1,148 @@
++<?php
++
++namespace Drupal\keycloak\EventSubscriber;
++
++use Drupal\Core\Language\LanguageManagerInterface;
++use Drupal\Core\Path\PathMatcherInterface;
++use Drupal\Core\PathProcessor\InboundPathProcessorInterface;
++use Drupal\Core\Routing\TrustedRedirectResponse;
++use Drupal\Core\Url;
++use Drupal\keycloak\Service\KeycloakServiceInterface;
++use Drupal\openid_connect\StateToken;
++use Symfony\Component\HttpKernel\KernelEvents;
++use Symfony\Component\HttpKernel\Event\GetResponseEvent;
++use Symfony\Component\EventDispatcher\EventSubscriberInterface;
++
++/**
++ * Redirect subscriber for controller requests.
++ */
++class KeycloakRequestSubscriber implements EventSubscriberInterface {
++
++  /**
++   * The Keycloak service.
++   *
++   * @var \Drupal\keycloak\KeycloakServiceInterface
++   */
++  protected $keycloak;
++
++  /**
++   * The language manager.
++   *
++   * @var \Drupal\Core\Language\LanguageManagerInterface
++   */
++  protected $languageManager;
++
++  /**
++   * A path processor manager for resolving the system path.
++   *
++   * @var \Drupal\Core\PathProcessor\InboundPathProcessorInterface
++   */
++  protected $pathProcessor;
++
++  /**
++   * The path matcher.
++   *
++   * @var \Drupal\Core\Path\PathMatcherInterface
++   */
++  protected $pathMatcher;
++
++  /**
++   * Constructs a RedirectRequestSubscriber.
++   *
++   * @param \Drupal\keycloak\Service\KeycloakServiceInterface $keycloak
++   *   The Keycloak service.
++   * @param \Drupal\Core\Language\LanguageManagerInterface $language_manager
++   *   The language manager service.
++   * @param \Drupal\Core\PathProcessor\InboundPathProcessorInterface $path_processor
++   *   Inbound path processor manager.
++   * @param \Drupal\Core\Path\PathMatcherInterface $path_matcher
++   *   The path matcher.
++   */
++  public function __construct(KeycloakServiceInterface $keycloak, LanguageManagerInterface $language_manager, InboundPathProcessorInterface $path_processor, PathMatcherInterface $path_matcher) {
++    $this->keycloak = $keycloak;
++    $this->languageManager = $language_manager;
++    $this->pathProcessor = $path_processor;
++    $this->pathMatcher = $path_matcher;
++  }
++
++  /**
++   * Redirects keycloak logout requests to Keycloak.
++   *
++   * @param \Symfony\Component\HttpKernel\Event\GetResponseEvent $event
++   *   The event to process.
++   */
++  public function onKernelRequestCheckKeycloakRedirect(GetResponseEvent $event) {
++    // Whether Keycloak is enabled and configured for RP initiated
++    // Single Sign-Out.
++    if (!$this->keycloak->isKeycloakSignOutEnabled()) {
++      return;
++    }
++
++    $request = clone $event->getRequest();
++
++    // Whether the request is not a GET or redirect request.
++    if (!($request->isMethod('GET') || $request->isMethod('HEAD'))) {
++      return;
++    }
++
++    // Whether the path of the request doesn't match our
++    // keycloak.logout route.
++    $path = $this->pathProcessor->processInbound($request->getPathInfo(), $request);
++    if (!$this->pathMatcher->matchPath($path, Url::fromRoute('keycloak.logout')->toString())) {
++      return;
++    }
++
++    // Extract query parameters.
++    parse_str($request->getQueryString(), $request_query);
++    // Whether this is not a Keycloak Single Sign-Out request.
++    if (empty($request_query['id_token_hint'])) {
++      return;
++    }
++
++    // Construct the Keycloak end session endpoint parameters.
++    $query = [
++      'state' => StateToken::create(),
++    ] + $request_query;
++
++    // Whether to add language parameter. This is only needed,
++    // if Keycloak is configured to ask the user for logout
++    // confirmation.
++    if ($this->keycloak->isI18nEnabled()) {
++      // Get current language.
++      $langcode = $this->languageManager->getCurrentLanguage()->getId();
++      // Map Drupal language code to Keycloak language identifier.
++      // This is required for some languages, as Drupal uses IETF
++      // script codes, while Keycloak may use IETF region codes.
++      $languages = $this->keycloak->getI18nMapping();
++      if (!empty($languages[$langcode])) {
++        $langcode = $languages[$langcode]['locale'];
++      }
++      // Add parameter to request query, so the Keycloak login/register
++      // pages will load using the right locale.
++      $query['kc_locale'] = $langcode;
++    }
++
++    // Generate the endpoint URL including parameters.
++    $sign_out_endpoint = Url::fromUri($this->keycloak->getKeycloakSignOutEndpoint(), [
++      'query' => $query,
++    ])->toString(TRUE)->getGeneratedUrl();
++
++    // Alter the response to redirect to the endpoint.
++    $response = new TrustedRedirectResponse(
++      $sign_out_endpoint,
++      302
++    );
++
++    $event->setResponse($response);
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public static function getSubscribedEvents() {
++    $events[KernelEvents::REQUEST][] = ['onKernelRequestCheckKeycloakRedirect', 35];
++
++    return $events;
++  }
++
++}
+diff --git a/src/Plugin/OpenIDConnectClient/Keycloak.php b/src/Plugin/OpenIDConnectClient/Keycloak.php
+index 34f02f9..d0a5896 100644
+--- a/src/Plugin/OpenIDConnectClient/Keycloak.php
++++ b/src/Plugin/OpenIDConnectClient/Keycloak.php
+@@ -312,6 +312,38 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
+ 
+     $form = array_merge_recursive($form, $this->getGroupRuleTable($form_state));
+ 
++    $form['keycloak_sign_out'] = [
++      '#title' => $this->t('Enable Drupal-initiated single sign-out'),
++      '#type' => 'checkbox',
++      '#default_value' => !empty($this->configuration['keycloak_sign_out']) ? $this->configuration['keycloak_sign_out'] : 0,
++      '#description' => $this->t("Whether to sign out of Keycloak, when the user logs out of Drupal."),
++    ];
++    $form['check_session_enabled'] = [
++      '#title' => $this->t('Enable Keycloak-initiated single sign-out'),
++      '#type' => 'checkbox',
++      '#default_value' => !empty($this->configuration['check_session']['enabled']) ? $this->configuration['check_session']['enabled'] : 0,
++      '#description' => $this->t('Whether to log out of Drupal, when the user ends its Keycloak session.'),
++    ];
++    $form['check_session'] = [
++      '#title' => $this->t('Check session settings'),
++      '#type' => 'fieldset',
++      '#states' => [
++        'visible' => [
++          ':input[name="clients[keycloak][settings][check_session_enabled]"]' => ['checked' => TRUE],
++        ],
++      ],
++    ];
++    $form['check_session']['interval'] = [
++      '#title' => $this->t('Check session interval'),
++      '#type' => 'number',
++      '#min' => 1,
++      '#max' => 99999,
++      '#step' => 1,
++      '#size' => 5,
++      '#field_suffix' => $this->t('seconds'),
++      '#default_value' => !isset($this->configuration['check_session']['interval']) ? $this->configuration['check_session']['interval'] : 2,
++    ];
++
+     return $form;
+   }
+ 
+diff --git a/src/Routing/KeycloakRouteSubscriber.php b/src/Routing/KeycloakRouteSubscriber.php
+new file mode 100644
+index 0000000..ec47bde
+--- /dev/null
++++ b/src/Routing/KeycloakRouteSubscriber.php
+@@ -0,0 +1,44 @@
++<?php
++
++namespace Drupal\keycloak\Routing;
++
++use Drupal\Core\Routing\RouteSubscriberBase;
++use Drupal\Core\Routing\RoutingEvents;
++use Symfony\Component\Routing\RouteCollection;
++
++/**
++ * Listens to dynamic route events.
++ */
++class KeycloakRouteSubscriber extends RouteSubscriberBase {
++
++  /**
++   * {@inheritdoc}
++   */
++  protected function alterRoutes(RouteCollection $collection) {
++    // Always grant access to '/user/logout' and delegate its
++    // handling to our own controller.
++    if ($route = $collection->get('user.logout')) {
++      $route
++        ->setDefaults([
++          '_controller' => '\Drupal\keycloak\Controller\KeycloakController::logout',
++        ])
++        ->setRequirements([
++          '_access' => 'TRUE',
++        ])
++        ->setOptions([
++          'no_cache' => TRUE,
++        ]);
++    }
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public static function getSubscribedEvents() {
++    // Come after field_ui.
++    $events[RoutingEvents::ALTER] = ['onAlterRoutes', -200];
++
++    return $events;
++  }
++
++}
+diff --git a/src/Service/KeycloakService.php b/src/Service/KeycloakService.php
+index b70212a..cf07f5c 100644
+--- a/src/Service/KeycloakService.php
++++ b/src/Service/KeycloakService.php
+@@ -5,6 +5,10 @@ namespace Drupal\keycloak\Service;
+ use Drupal\Core\Config\ConfigFactoryInterface;
+ use Drupal\Core\Language\LanguageManagerInterface;
+ use Drupal\Core\Logger\LoggerChannelFactoryInterface;
++use Drupal\Core\Session\AccountProxyInterface;
++use Drupal\Core\Url;
++use Drupal\user\PrivateTempStoreFactory;
++use Symfony\Component\HttpFoundation\RedirectResponse;
+ 
+ /**
+  * Keycloak service.
+@@ -25,6 +29,20 @@ class KeycloakService implements KeycloakServiceInterface {
+    */
+   protected $languageManager;
+ 
++  /**
++   * The current user.
++   *
++   * @var \Drupal\Core\Session\AccountProxyInterface
++   */
++  protected $currentUser;
++
++  /**
++   * The users' private tempstore instance.
++   *
++   * @var \Drupal\user\PrivateTempStoreFactory
++   */
++  protected $privateTempstore;
++
+   /**
+    * The logger factory.
+    *
+@@ -32,16 +50,28 @@ class KeycloakService implements KeycloakServiceInterface {
+    */
+   protected $loggerFactory;
+ 
++
++  /**
++   * Default keys to be stored to / retrieved from a Keycloak user session.
++   *
++   * @var array
++   */
++  private static $sessionInfoKeys;
++
+   /**
+    * {@inheritdoc}
+    */
+   public function __construct(
+     ConfigFactoryInterface $config_factory,
+     LanguageManagerInterface $language_manager,
++    AccountProxyInterface $current_user,
++    PrivateTempStoreFactory $private_tempstore,
+     LoggerChannelFactoryInterface $logger
+   ) {
+     $this->config = $config_factory->get('openid_connect.settings.keycloak');
+     $this->languageManager = $language_manager;
++    $this->currentUser = $current_user;
++    $this->privateTempstore = $private_tempstore;
+     $this->loggerFactory = $logger;
+   }
+ 
+@@ -80,6 +110,62 @@ class KeycloakService implements KeycloakServiceInterface {
+     ];
+   }
+ 
++  /**
++   * {@inheritdoc}
++   */
++  public function isKeycloakUser() {
++    // Whether the user is not authenticated or the Keycloak client disabled.
++    if (!$this->currentUser->isAuthenticated() || !$this->isEnabled()) {
++      return FALSE;
++    }
++
++    // If the user was logged in using Keycloak, we will find session
++    // information in the users' private tempstore.
++    $tempstore = $this->privateTempstore->get('keycloak');
++    return !empty($tempstore);
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getSessionInfoDefaultKeys() {
++    if (!isset(self::$sessionInfoKeys)) {
++      $default_keys = [
++        self::KEYCLOAK_SESSION_ACCESS_TOKEN,
++        self::KEYCLOAK_SESSION_REFRESH_TOKEN,
++        self::KEYCLOAK_SESSION_ID_TOKEN,
++        self::KEYCLOAK_SESSION_CLIENT_ID,
++        self::KEYCLOAK_SESSION_SESSION_ID,
++      ];
++
++      self::$sessionInfoKeys = $default_keys;
++    }
++
++    return self::$sessionInfoKeys;
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getSessionInfo($keys = NULL) {
++    $session_info = [];
++
++    if (!$this->isKeycloakUser()) {
++      return $session_info;
++    }
++
++    $default_keys = $this->getSessionInfoDefaultKeys();
++
++    $keys = empty($keys) ? $default_keys : array_intersect($default_keys, $keys);
++    $tempstore = $this->privateTempstore->get('keycloak');
++
++    foreach ($keys as $key) {
++      $session_info[$key] = $tempstore->get($key);
++    }
++
++    return $session_info;
++  }
++
+   /**
+    * {@inheritdoc}
+    */
+@@ -128,6 +214,66 @@ class KeycloakService implements KeycloakServiceInterface {
+     return $mappings;
+   }
+ 
++  /**
++   * {@inheritdoc}
++   */
++  public function isKeycloakSignOutEnabled() {
++    return $this->config->get('enabled') &&
++      $this->config->get('settings.keycloak_sign_out');
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getKeycloakSignOutEndpoint() {
++    return $this->getEndpoints()['end_session'];
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getKeycloakSignoutResponse(array $session_information) {
++    $logout_redirect = Url::fromRoute('<front>', [], ['absolute' => TRUE])->toString();
++
++    if (
++      $this->isKeycloakSignOutEnabled() &&
++      !empty($session_information[self::KEYCLOAK_SESSION_ID_TOKEN])
++    ) {
++      // We do an internal redirect here and modify it in
++      // our KeycloakRequestSubscriber.
++      return new RedirectResponse(Url::fromRoute('keycloak.logout', [], [
++        'query' => [
++          'id_token_hint' => $session_information[self::KEYCLOAK_SESSION_ID_TOKEN],
++          'post_logout_redirect_uri' => $logout_redirect,
++        ],
++      ])->toString());
++    }
++
++    return new RedirectResponse($logout_redirect);
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function isCheckSessionEnabled() {
++    return $this->config->get('enabled') &&
++      $this->config->get('settings.check_session.enabled');
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getCheckSessionInterval() {
++    return $this->config->get('settings.check_session.interval');
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getCheckSessionIframeUrl() {
++    return $this->getEndpoints()['session_iframe'];
++  }
++
+   /**
+    * {@inheritdoc}
+    */
+diff --git a/src/Service/KeycloakServiceInterface.php b/src/Service/KeycloakServiceInterface.php
+index b7c765e..4d59868 100644
+--- a/src/Service/KeycloakServiceInterface.php
++++ b/src/Service/KeycloakServiceInterface.php
+@@ -5,6 +5,8 @@ namespace Drupal\keycloak\Service;
+ use Drupal\Core\Config\ConfigFactoryInterface;
+ use Drupal\Core\Language\LanguageManagerInterface;
+ use Drupal\Core\Logger\LoggerChannelFactoryInterface;
++use Drupal\Core\Session\AccountProxyInterface;
++use Drupal\user\PrivateTempStoreFactory;
+ 
+ /**
+  * Keycloak service interface.
+@@ -41,6 +43,31 @@ interface KeycloakServiceInterface {
+    */
+   const KEYCLOAK_CHECK_SESSION_IFRAME_URI = '/protocol/openid-connect/login-status-iframe.html';
+ 
++  /**
++   * Keycloak access token.
++   */
++  const KEYCLOAK_SESSION_ACCESS_TOKEN = 'access_token';
++
++  /**
++   * Keycloak refresh token.
++   */
++  const KEYCLOAK_SESSION_REFRESH_TOKEN = 'refresh_token';
++
++  /**
++   * Keycloak ID token.
++   */
++  const KEYCLOAK_SESSION_ID_TOKEN = 'id_token';
++
++  /**
++   * Keycloak client ID.
++   */
++  const KEYCLOAK_SESSION_CLIENT_ID = 'client_id';
++
++  /**
++   * Keycloak session ID.
++   */
++  const KEYCLOAK_SESSION_SESSION_ID = 'session_id';
++
+   /**
+    * Constructor for Drupal\keycloak\Service\KeycloakService.
+    *
+@@ -48,12 +75,18 @@ interface KeycloakServiceInterface {
+    *   The config factory.
+    * @param \Drupal\Core\Language\LanguageManagerInterface $language_manager
+    *   A language manager instance.
++   * @param \Drupal\Core\Session\AccountProxyInterface $current_user
++   *   Account proxy for the currently logged-in user.
++   * @param \Drupal\user\PrivateTempStoreFactory $private_tempstore
++   *   A private tempstore factory instance.
+    * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger
+    *   A logger channel factory instance.
+    */
+   public function __construct(
+     ConfigFactoryInterface $config_factory,
+     LanguageManagerInterface $language_manager,
++    AccountProxyInterface $current_user,
++    PrivateTempStoreFactory $private_tempstore,
+     LoggerChannelFactoryInterface $logger
+   );
+ 
+@@ -94,6 +127,35 @@ interface KeycloakServiceInterface {
+    */
+   public function getEndpoints();
+ 
++  /**
++   * Whether the currently logged in user was logged in using Keycloak.
++   *
++   * @return bool
++   *   TRUE, if user was logged in using Keycloak, FALSE otherwise.
++   */
++  public function isKeycloakUser();
++
++  /**
++   * Return an array of available Keycloak session info keys.
++   *
++   * @return array
++   *   Keycloak session info keys.
++   */
++  public function getSessionInfoDefaultKeys();
++
++  /**
++   * Return an associative array of Keycloak session information.
++   *
++   * @param array|null $keys
++   *   (optional) Array of session info keys to retrieve or NULL. If no
++   *   keys are provided, the entire session info will be returned.
++   *   Defaults to NULL.
++   *
++   * @return array
++   *   Associative array of Keycloak session information.
++   */
++  public function getSessionInfo($keys = NULL);
++
+   /**
+    * Whether Keycloak multi-language support is enabled.
+    *
+@@ -130,6 +192,59 @@ interface KeycloakServiceInterface {
+    */
+   public function getI18nMapping($reverse = FALSE, $include_enabled = TRUE);
+ 
++  /**
++   * Whether RP (Drupal) initiated Single Sing-Out is enabled.
++   *
++   * @return bool
++   *   TRUE, if RP inititated sign out is enabled, FALSE otherwise.
++   */
++  public function isKeycloakSignOutEnabled();
++
++  /**
++   * Return the Keycloak Single Sing-Out endpoint.
++   *
++   * @return string
++   *   Keycloak Single Sing-Out endpoint.
++   */
++  public function getKeycloakSignOutEndpoint();
++
++  /**
++   * Return a RP (Drupal) initiated single sign-out response.
++   *
++   * @param array $session_information
++   *   Session information array holding the required id_token.
++   *
++   * @return \Symfony\Component\HttpFoundation\RedirectResponse
++   *   Redirect response redirecting to the sign out target route:
++   *   - '&lt;front&gt;' if Keycloak single sign-out is disabled.
++   *   - 'keycloak.logout' if Keycloak single sign-out is enabled.
++   */
++  public function getKeycloakSignoutResponse(array $session_information);
++
++  /**
++   * Whether OP (Keycloak) initiated Single Sing-Out is enabled.
++   *
++   * @return bool
++   *   TRUE, if OP inititated sign out is enabled, FALSE otherwise.
++   */
++  public function isCheckSessionEnabled();
++
++  /**
++   * Return the check session interval.
++   *
++   * @return int
++   *   The interval for check session requests in seconds.
++   */
++  public function getCheckSessionInterval();
++
++  /**
++   * Return the check session iframe URL.
++   *
++   * @return string
++   *   The URL of the Keycloak check session iframe.
++   */
++  public function getCheckSessionIframeUrl();
++
+   /**
+    * Return Keycloak logger.
+    *

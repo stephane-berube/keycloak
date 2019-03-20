@@ -218,6 +218,7 @@ function keycloak_page_attachments_alter(array &$build) {
   $build['#attached']['library'][] = 'keycloak/keycloak-session';
   $build['#attached']['drupalSettings']['keycloak'] = [
     'enableSessionCheck' => TRUE,
+    'email' => $keycloak->getEmail(),
     'sessionCheckInterval' => $keycloak->getCheckSessionInterval(),
     'sessionCheckIframeUrl' => $keycloak->getCheckSessionIframeUrl(),
     'logoutUrl' => Url::fromRoute('user.logout', [], [

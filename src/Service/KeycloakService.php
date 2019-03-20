@@ -269,6 +269,10 @@ class KeycloakService implements KeycloakServiceInterface {
     return $this->getEndpoints()['end_session'];
   }
 
+  public function getEmail() {
+    return $this->currentUser->getEmail();
+  }
+
   /**
    * {@inheritdoc}
    */
