@@ -122,6 +122,10 @@ class Keycloak extends OpenIDConnectClientBase implements OpenIDConnectClientInt
       ],
     ];
 
+    if (isset($_SERVER["HTTP_REFERER"])) {
+        $url_options['query']['preLoginUrl'] = $_SERVER["HTTP_REFERER"];
+    }
+
     // Whether to add language parameter.
     if ($this->keycloak->isI18nEnabled()) {
       // Get current language.
