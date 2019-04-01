@@ -136,6 +136,24 @@ class KeycloakController extends ControllerBase {
     // We're logging-out, so unset the cookie
     setcookie('GCAPIStoreLoggedInState', '', time()-86400, '/', 'api.canada.ca');
 
+    // Log user out of all tenants by hitting "logout" endpoint
+    // TODO: `$username` should be uri encoded
+    // TODO: We might want to put this in a `$this->keycloak->isKeycloakUser()` "if" block
+    $http_client = \Drupal::httpClient();
+    $current_user = \Drupal::currentUser();
+    $user = \Drupal\user\Entity\User::load($current_user->id());
+    $username = $user->getUsername();
+
+    // FIXME: Now the keycloak module depends on the API Store one
+    $config = \Drupal::config('api_store.settings');
+    $logout_endpoint = $config->get('logout_endpoint');
+
+    try {
+        $res = $http_client->request('GET', $logout_endpoint . $username);
+    } catch (\GuzzleHttp\Exception\ClientException $e) {
+        // pass
+    }
+
     if (
       !$this->requestStack->getCurrentRequest()->query->get('op_initiated') &&
       $this->keycloak->isEnabled() &&
