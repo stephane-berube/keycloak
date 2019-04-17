@@ -112,12 +112,6 @@ class KeycloakController extends ControllerBase {
     $_SESSION['openid_connect_op'] = 'login';
     $response = $client->authorize($scopes);
 
-    // API Store specific cookie so that other platforms can detect whether
-    // we're logged-in to SSO or not.
-    //
-    // We're logging-in, so set the cookie
-    setcookie('GCAPIStoreLoggedInState', 'true', time()+86400, '/', 'api.canada.ca');
-
     return $response;
   }
 
