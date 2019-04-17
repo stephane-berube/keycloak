@@ -143,7 +143,7 @@ class KeycloakController extends ControllerBase {
     $logout_endpoint = $config->get('logout_endpoint');
 
     try {
-        $res = $http_client->request('GET', $logout_endpoint . $username);
+        $res = $http_client->request('POST', $logout_endpoint . $username);
     } catch (\GuzzleHttp\Exception\ClientException $e) {
         // pass
     }
