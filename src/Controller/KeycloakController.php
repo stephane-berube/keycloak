@@ -128,7 +128,7 @@ class KeycloakController extends ControllerBase {
     // we're logged-in to SSO or not.
     //
     // We're logging-out, so unset the cookie
-    setcookie('GCAPIStoreLoggedInState', '', time()-86400, '/', 'api.canada.ca');
+    setcookie('GCAPIStoreLoggedInState', '', time()-86400, '/', \Drupal::request()->getHost());
 
     // Log user out of all tenants by hitting "logout" endpoint
     // TODO: `$username` should be uri encoded
